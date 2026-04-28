@@ -1,3 +1,4 @@
+import com.toedter.calendar.JDateChooser;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -13,13 +14,18 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.RenderingHints;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -30,6 +36,8 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -38,8 +46,15 @@ import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import javax.swing.JTextField;
+import javax.swing.JTextArea;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.border.Border;
+import javax.swing.border.LineBorder;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Date;
@@ -61,8 +76,43 @@ public class AdminDashboardFrame extends JFrame {
     private static final int TABLE_VISIBLE_ROWS = 4;
     private static final int TABLE_ROW_HEIGHT = 96;
     private static final int TABLE_ROW_GAP = 8;
+    private static final int DASHBOARD_TODAY_VISIBLE_ROWS = 4;
+    private static final int DASHBOARD_TODAY_ROW_HEIGHT = 74;
+    private static final int DASHBOARD_TODAY_ROW_GAP = 8;
+    private static final int DASHBOARD_TODAY_SCROLL_HEIGHT =
+        (DASHBOARD_TODAY_VISIBLE_ROWS * DASHBOARD_TODAY_ROW_HEIGHT)
+        + ((DASHBOARD_TODAY_VISIBLE_ROWS - 1) * DASHBOARD_TODAY_ROW_GAP)
+        + 4;
+    private static final int APPOINTMENT_DURATION_MINUTES = 60;
+    private static final String TIME_SLOT_BOOKED_MESSAGE =
+        "This time slot is already booked. Please choose another time.";
+    private static final int[] APPOINTMENT_TABLE_COLUMN_WIDTHS = {
+        120, // Date
+        90,  // Time
+        180, // Patient Name
+        220, // Reason
+        180, // Allergies
+        300, // Notes
+        120, // Status
+        130  // Actions
+    };
+    private static final int APPOINTMENT_TABLE_TOTAL_WIDTH = 1520;
+    private static final int[] PATIENT_TABLE_COLUMN_WIDTHS = {
+        120, // Patient ID
+        140, // First Name
+        130, // Middle Name
+        150, // Last Name
+        160, // Contact Number
+        180, // Emergency Contact
+        110  // Actions
+    };
+    private static final int PATIENT_TABLE_TOTAL_WIDTH = 1120;
     private static final int TABLE_SCROLL_HEIGHT =
         (TABLE_VISIBLE_ROWS * TABLE_ROW_HEIGHT) + ((TABLE_VISIBLE_ROWS - 1) * TABLE_ROW_GAP) + 20;
+    private static final Color INPUT_BORDER_COLOR = new Color(210, 220, 236);
+    private static final Color INPUT_ERROR_BORDER_COLOR = new Color(224, 93, 93);
+    private static final Color INPUT_FOCUS_BORDER_COLOR = new Color(102, 134, 239);
+    private static final Color INPUT_HOVER_BORDER_COLOR = new Color(176, 191, 222);
 
     private final String adminName;
     private final boolean receptionistMode;
@@ -77,6 +127,18 @@ public class AdminDashboardFrame extends JFrame {
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
     private static final DateTimeFormatter APPOINTMENT_INPUT_TIME_FORMAT =
         DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH);
+    private static final DateTimeFormatter APPOINTMENT_FORM_DATE_FORMAT =
+        DateTimeFormatter.ofPattern("MM/dd/uuuu", Locale.ENGLISH).withResolverStyle(ResolverStyle.STRICT);
+    private static final DateTimeFormatter APPOINTMENT_FORM_TIME_FORMAT =
+        new DateTimeFormatterBuilder()
+            .parseCaseInsensitive()
+            .appendPattern("h:mm a")
+            .toFormatter(Locale.ENGLISH)
+            .withResolverStyle(ResolverStyle.STRICT);
+    private static final DateTimeFormatter APPOINTMENT_TABLE_DATE_FORMAT =
+        DateTimeFormatter.ofPattern("MM/dd/yy", Locale.ENGLISH);
+    private static final DateTimeFormatter APPOINTMENT_CALENDAR_TITLE_FORMAT =
+        DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH);
 
     private CardLayout mainCardLayout;
     private JPanel mainCardPanel;
@@ -97,7 +159,7 @@ public class AdminDashboardFrame extends JFrame {
     private TogglePill tableToggle;
     private TogglePill calendarToggle;
     private JTextField appointmentSearchField;
-    private JTextField appointmentCalendarDateField;
+    private JDateChooser appointmentCalendarDatePicker;
     private JLabel appointmentCalendarTitleLabel;
     private LocalDate appointmentCalendarDate = LocalDate.now();
     private String appointmentSearchQuery = "";
@@ -343,7 +405,7 @@ public class AdminDashboardFrame extends JFrame {
         previewLogButton.setFont(new java.awt.Font("Segoe UI", 1, 17)); // NOI18N
         previewLogButton.setBackground(new java.awt.Color(30, 51, 98));
         previewLogButton.setForeground(new java.awt.Color(217, 224, 242));
-        previewLogButton.setText("Log");
+        previewLogButton.setText("Logs");
         previewLogButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 20, 12, 20));
         previewLogButton.setBorderPainted(false);
         previewLogButton.setFocusPainted(false);
@@ -783,7 +845,7 @@ public class AdminDashboardFrame extends JFrame {
         dashboardNav = new NavItem("▦  Dashboard", VIEW_DASHBOARD);
         appointmentsNav = new NavItem("◫  Appointments", VIEW_APPOINTMENTS);
         patientsNav = new NavItem("◌  Patients", VIEW_PATIENTS);
-        logNav = new NavItem("⊟  Log", VIEW_LOG);
+        logNav = new NavItem("⊟  Logs", VIEW_LOG);
         if (!receptionistMode) {
             receptionistsNav = new NavItem("◍  Receptionists", VIEW_RECEPTIONISTS);
         } else {
@@ -900,8 +962,8 @@ public class AdminDashboardFrame extends JFrame {
         RoundedPanel appointments = sectionCard();
         appointments.setLayout(new BorderLayout());
         appointments.setBorder(BorderFactory.createEmptyBorder(20, 22, 20, 22));
-        appointments.setPreferredSize(new Dimension(1000, 340));
-        appointments.setMaximumSize(new Dimension(Integer.MAX_VALUE, 380));
+        appointments.setPreferredSize(new Dimension(1000, 404));
+        appointments.setMaximumSize(new Dimension(Integer.MAX_VALUE, 430));
 
         JPanel appHeader = new JPanel(new BorderLayout());
         appHeader.setOpaque(false);
@@ -926,8 +988,10 @@ public class AdminDashboardFrame extends JFrame {
         dashboardTodayRows = new JPanel();
         dashboardTodayRows.setOpaque(false);
         dashboardTodayRows.setLayout(new BoxLayout(dashboardTodayRows, BoxLayout.Y_AXIS));
-        dashboardTodayRows.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
-        appointments.add(dashboardTodayRows, BorderLayout.CENTER);
+        dashboardTodayRows.setBorder(BorderFactory.createEmptyBorder());
+        JScrollPane todayScroll = dashboardTodayRowsScrollPane(dashboardTodayRows);
+        todayScroll.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+        appointments.add(todayScroll, BorderLayout.CENTER);
 
         body.add(stats);
         body.add(Box.createVerticalStrut(20));
@@ -1020,23 +1084,26 @@ public class AdminDashboardFrame extends JFrame {
     private RoundedPanel buildTableAppointmentsPanel() {
         RoundedPanel tableCard = sectionCard();
         tableCard.setLayout(new BorderLayout());
-        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
         applyFixedTableCardSize(tableCard, true);
 
         appointmentTableRows = new JPanel();
         appointmentTableRows.setOpaque(false);
         appointmentTableRows.setLayout(new BoxLayout(appointmentTableRows, BoxLayout.Y_AXIS));
+        appointmentTableRows.putClientProperty("qc.tableWidth", APPOINTMENT_TABLE_TOTAL_WIDTH);
+        appointmentTableRows.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 10));
+        appointmentTableRows.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
 
-        JPanel headerRow = dashboardStyleTableHeader(
-            "Time",
-            "Patient / Reason / Date",
-            "Status / Actions",
-            112,
-            240
-        );
+        JPanel headerRow = appointmentTableHeaderRow();
+        JScrollPane tableScroll = tableRowsScrollPane(appointmentTableRows, true);
+        tableScroll.setColumnHeaderView(headerRow);
+        tableScroll.getColumnHeader().setOpaque(false);
+        tableScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
+        JPanel headerCorner = new JPanel();
+        headerCorner.setOpaque(false);
+        tableScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, headerCorner);
 
-        tableCard.add(headerRow, BorderLayout.NORTH);
-        tableCard.add(tableRowsScrollPane(appointmentTableRows), BorderLayout.CENTER);
+        tableCard.add(tableScroll, BorderLayout.CENTER);
         return tableCard;
     }
 
@@ -1047,88 +1114,101 @@ public class AdminDashboardFrame extends JFrame {
 
         RoundedPanel dateCard = sectionCard();
         dateCard.setLayout(new BoxLayout(dateCard, BoxLayout.Y_AXIS));
-        dateCard.setBorder(BorderFactory.createEmptyBorder(18, 20, 18, 20));
+        dateCard.setBorder(BorderFactory.createEmptyBorder(18, 24, 18, 24));
         dateCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 190));
 
         JPanel topRow = new JPanel();
         topRow.setOpaque(false);
-        topRow.setLayout(new BoxLayout(topRow, BoxLayout.X_AXIS));
-        JButton left = flatNavButton("‹");
-        left.addActionListener(e -> {
-            appointmentCalendarDate = appointmentCalendarDate.minusDays(1);
-            refreshAppointmentCalendarHeader();
-            refreshAppointmentRows();
-        });
-        RoundedPanel dateBox = new RoundedPanel(12, new Color(249, 251, 255));
-        dateBox.setLayout(new BorderLayout());
-        dateBox.setBorder(BorderFactory.createEmptyBorder(8, 14, 8, 14));
-        dateBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
-        appointmentCalendarDateField = new JTextField();
-        appointmentCalendarDateField.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        appointmentCalendarDateField.setForeground(new Color(35, 46, 68));
-        appointmentCalendarDateField.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
-        appointmentCalendarDateField.addActionListener(e -> {
-            if (applyCalendarDateFromInput()) {
-                refreshAppointmentRows();
+        topRow.setLayout(new GridBagLayout());
+        topRow.setAlignmentX(Component.CENTER_ALIGNMENT);
+        topRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        JButton left = calendarNavButton("‹");
+        left.addActionListener(e -> setAppointmentCalendarDate(appointmentCalendarDate.minusDays(1)));
+        appointmentCalendarDatePicker = new JDateChooser();
+        appointmentCalendarDatePicker.setDateFormatString("MM/dd/yyyy");
+        appointmentCalendarDatePicker.setDate(Date.valueOf(appointmentCalendarDate));
+        styleDateChooserField(appointmentCalendarDatePicker);
+        appointmentCalendarDatePicker.setPreferredSize(new Dimension(260, 42));
+        appointmentCalendarDatePicker.setMinimumSize(new Dimension(240, 42));
+        appointmentCalendarDatePicker.setMaximumSize(new Dimension(280, 42));
+        appointmentCalendarDatePicker.addPropertyChangeListener("date", evt -> {
+            Object newValue = evt.getNewValue();
+            if (!(newValue instanceof java.util.Date)) {
+                return;
+            }
+            LocalDate selectedDate = new Date(((java.util.Date) newValue).getTime()).toLocalDate();
+            if (!selectedDate.equals(appointmentCalendarDate)) {
+                setAppointmentCalendarDate(selectedDate);
             }
         });
-        appointmentCalendarDateField.addFocusListener(new java.awt.event.FocusAdapter() {
-            @Override
-            public void focusLost(java.awt.event.FocusEvent e) {
-                applyCalendarDateFromInput();
-            }
-        });
-        dateBox.add(appointmentCalendarDateField, BorderLayout.CENTER);
-        RoundedPanel today = new RoundedPanel(14, new Color(86, 176, 234));
-        today.setLayout(new BorderLayout());
-        today.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
-        JLabel todayLabel = new JLabel("Today");
-        todayLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        todayLabel.setForeground(new Color(18, 33, 58));
+        JButton today = new JButton("Today");
+        today.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        today.setFocusPainted(false);
+        today.setContentAreaFilled(true);
+        today.setOpaque(true);
+        today.setBackground(new Color(60, 101, 228));
+        today.setForeground(Color.WHITE);
+        today.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
         today.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        today.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                appointmentCalendarDate = LocalDate.now();
-                refreshAppointmentCalendarHeader();
-                refreshAppointmentRows();
-            }
-        });
-        today.add(todayLabel, BorderLayout.CENTER);
-        JButton right = flatNavButton("›");
-        right.addActionListener(e -> {
-            appointmentCalendarDate = appointmentCalendarDate.plusDays(1);
-            refreshAppointmentCalendarHeader();
-            refreshAppointmentRows();
-        });
-        topRow.add(left);
-        topRow.add(Box.createHorizontalStrut(14));
-        topRow.add(dateBox);
-        topRow.add(Box.createHorizontalStrut(12));
-        topRow.add(today);
-        topRow.add(Box.createHorizontalStrut(16));
-        topRow.add(right);
+        today.setPreferredSize(new Dimension(90, 36));
+        today.setMaximumSize(new Dimension(94, 36));
+        today.addActionListener(e -> setAppointmentCalendarDate(LocalDate.now()));
+        JButton right = calendarNavButton("›");
+        right.addActionListener(e -> setAppointmentCalendarDate(appointmentCalendarDate.plusDays(1)));
+        JPanel centeredControls = new JPanel();
+        centeredControls.setOpaque(false);
+        centeredControls.setLayout(new BoxLayout(centeredControls, BoxLayout.X_AXIS));
+        centeredControls.add(left);
+        centeredControls.add(Box.createHorizontalStrut(12));
+        centeredControls.add(appointmentCalendarDatePicker);
+        centeredControls.add(Box.createHorizontalStrut(10));
+        centeredControls.add(today);
+        centeredControls.add(Box.createHorizontalStrut(12));
+        centeredControls.add(right);
+        topRow.add(centeredControls, new GridBagConstraints());
+
+        dateCard.add(Box.createVerticalStrut(2));
         dateCard.add(topRow);
         dateCard.add(Box.createVerticalStrut(16));
         appointmentCalendarTitleLabel = new JLabel();
+        appointmentCalendarTitleLabel.setHorizontalAlignment(SwingConstants.CENTER);
         appointmentCalendarTitleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        appointmentCalendarTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 17));
+        appointmentCalendarTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
         appointmentCalendarTitleLabel.setForeground(new Color(31, 41, 63));
-        dateCard.add(appointmentCalendarTitleLabel);
+        JPanel titleRow = new JPanel(new GridBagLayout());
+        titleRow.setOpaque(false);
+        titleRow.setAlignmentX(Component.CENTER_ALIGNMENT);
+        titleRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+        titleRow.add(appointmentCalendarTitleLabel, new GridBagConstraints());
+        dateCard.add(titleRow);
+        dateCard.add(Box.createVerticalStrut(2));
         refreshAppointmentCalendarHeader();
 
         RoundedPanel listCard = sectionCard();
         listCard.setLayout(new BorderLayout());
-        listCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
-        listCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
+        listCard.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
+        applyFixedTableCardSize(listCard, true);
 
         appointmentCalendarRows = new JPanel();
         appointmentCalendarRows.setOpaque(false);
         appointmentCalendarRows.setLayout(new BoxLayout(appointmentCalendarRows, BoxLayout.Y_AXIS));
-        listCard.add(appointmentCalendarRows, BorderLayout.CENTER);
+        appointmentCalendarRows.putClientProperty("qc.tableWidth", APPOINTMENT_TABLE_TOTAL_WIDTH);
+        appointmentCalendarRows.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 10));
+        appointmentCalendarRows.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
+        JPanel headerRow = appointmentTableHeaderRow();
+        JScrollPane calendarScroll = tableRowsScrollPane(appointmentCalendarRows, true);
+        calendarScroll.getVerticalScrollBar().setUnitIncrement(24);
+        calendarScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
+        calendarScroll.setColumnHeaderView(headerRow);
+        calendarScroll.getColumnHeader().setOpaque(false);
+        calendarScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
+        JPanel calendarHeaderCorner = new JPanel();
+        calendarHeaderCorner.setOpaque(false);
+        calendarScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, calendarHeaderCorner);
+        listCard.add(calendarScroll, BorderLayout.CENTER);
 
         calendarPanel.add(dateCard);
-        calendarPanel.add(Box.createVerticalStrut(18));
+        calendarPanel.add(Box.createVerticalStrut(20));
         calendarPanel.add(listCard);
         return calendarPanel;
     }
@@ -1182,23 +1262,28 @@ public class AdminDashboardFrame extends JFrame {
 
         RoundedPanel tableCard = sectionCard();
         tableCard.setLayout(new BorderLayout());
-        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
         applyFixedTableCardSize(tableCard, true);
 
         patientRows = new JPanel();
         patientRows.setOpaque(false);
         patientRows.setLayout(new BoxLayout(patientRows, BoxLayout.Y_AXIS));
+        patientRows.putClientProperty("qc.tableWidth", PATIENT_TABLE_TOTAL_WIDTH);
+        patientRows.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 10));
+        patientRows.setPreferredSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
 
-        JPanel headerRow = dashboardStyleTableHeader(
-            "Patient ID",
-            "Patient / Contact",
-            "Actions",
-            122,
-            170
-        );
+        JPanel headerRow = patientTableHeaderRow();
+        JScrollPane patientScroll = tableRowsScrollPane(patientRows, true);
+        patientScroll.setColumnHeaderView(headerRow);
+        patientScroll.getColumnHeader().setOpaque(false);
+        patientScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
+        JPanel patientHeaderCorner = new JPanel();
+        patientHeaderCorner.setOpaque(false);
+        patientScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, patientHeaderCorner);
+        patientScroll.getVerticalScrollBar().setUnitIncrement(22);
+        patientScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
 
-        tableCard.add(headerRow, BorderLayout.NORTH);
-        tableCard.add(tableRowsScrollPane(patientRows), BorderLayout.CENTER);
+        tableCard.add(patientScroll, BorderLayout.CENTER);
 
         body.add(summaryCard);
         body.add(Box.createVerticalStrut(18));
@@ -1209,7 +1294,12 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private JPanel buildLogView() {
-        JPanel header = viewHeader("Log", "View completed and cancelled appointments", null, null);
+        JPanel header = viewHeader(
+            "Logs / Archive",
+            "Completed and cancelled appointments are archived here",
+            null,
+            null
+        );
 
         JPanel body = new JPanel();
         body.setOpaque(false);
@@ -1272,23 +1362,28 @@ public class AdminDashboardFrame extends JFrame {
 
         RoundedPanel tableCard = sectionCard();
         tableCard.setLayout(new BorderLayout());
-        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
         applyFixedTableCardSize(tableCard, true);
 
         logRows = new JPanel();
         logRows.setOpaque(false);
         logRows.setLayout(new BoxLayout(logRows, BoxLayout.Y_AXIS));
+        logRows.putClientProperty("qc.tableWidth", APPOINTMENT_TABLE_TOTAL_WIDTH);
+        logRows.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 10));
+        logRows.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
 
-        JPanel headerRow = dashboardStyleTableHeader(
-            "Time / Date",
-            "Patient / Reason",
-            "Status / Action",
-            118,
-            250
-        );
+        JPanel headerRow = appointmentTableHeaderRow();
+        JScrollPane logScroll = tableRowsScrollPane(logRows, true);
+        logScroll.setColumnHeaderView(headerRow);
+        logScroll.getColumnHeader().setOpaque(false);
+        logScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
+        JPanel logHeaderCorner = new JPanel();
+        logHeaderCorner.setOpaque(false);
+        logScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, logHeaderCorner);
+        logScroll.getVerticalScrollBar().setUnitIncrement(22);
+        logScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
 
-        tableCard.add(headerRow, BorderLayout.NORTH);
-        tableCard.add(tableRowsScrollPane(logRows), BorderLayout.CENTER);
+        tableCard.add(logScroll, BorderLayout.CENTER);
 
         body.add(summary);
         body.add(Box.createVerticalStrut(18));
@@ -1509,39 +1604,279 @@ public class AdminDashboardFrame extends JFrame {
         return button;
     }
 
+    private JButton calendarNavButton(String text) {
+        JButton button = new JButton(text);
+        button.setFocusPainted(false);
+        button.setContentAreaFilled(true);
+        button.setOpaque(true);
+        button.setBackground(new Color(243, 247, 255));
+        button.setForeground(new Color(50, 74, 135));
+        button.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(204, 217, 241), 1, true),
+                BorderFactory.createEmptyBorder(3, 10, 3, 10)
+            )
+        );
+        button.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        button.setPreferredSize(new Dimension(38, 36));
+        button.setMaximumSize(new Dimension(38, 36));
+        return button;
+    }
+
+    private Border buildInputBorder(Color borderColor) {
+        return BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(borderColor),
+            BorderFactory.createEmptyBorder(8, 10, 8, 10)
+        );
+    }
+
+    private Border buildRoundedInputBorder(Color borderColor) {
+        return BorderFactory.createCompoundBorder(
+            new LineBorder(borderColor, 1, true),
+            BorderFactory.createEmptyBorder(2, 10, 2, 6)
+        );
+    }
+
+    private void applyDefaultFieldBorder(JComponent field) {
+        Border defaultBorder = buildInputBorder(INPUT_BORDER_COLOR);
+        field.setBorder(defaultBorder);
+        field.putClientProperty("qc.defaultBorder", defaultBorder);
+        field.putClientProperty("qc.invalid", Boolean.FALSE);
+    }
+
+    private void highlightInvalidField(JComponent field) {
+        Object invalidBorder = field.getClientProperty("qc.invalidBorder");
+        if (invalidBorder instanceof Border) {
+            field.setBorder((Border) invalidBorder);
+        } else {
+            field.setBorder(buildInputBorder(INPUT_ERROR_BORDER_COLOR));
+        }
+        field.putClientProperty("qc.invalid", Boolean.TRUE);
+        field.requestFocusInWindow();
+    }
+
+    private void resetFieldValidationState(JComponent... fields) {
+        if (fields == null) {
+            return;
+        }
+        for (JComponent field : fields) {
+            if (field == null) {
+                continue;
+            }
+            Object stored = field.getClientProperty("qc.defaultBorder");
+            if (stored instanceof Border) {
+                field.setBorder((Border) stored);
+            } else {
+                applyDefaultFieldBorder(field);
+            }
+            field.putClientProperty("qc.invalid", Boolean.FALSE);
+            Object buttonObj = field.getClientProperty("qc.calendarButton");
+            Object buttonColorObj = field.getClientProperty("qc.calendarButtonBaseColor");
+            if (buttonObj instanceof JButton && buttonColorObj instanceof Color) {
+                ((JButton) buttonObj).setBackground((Color) buttonColorObj);
+            }
+        }
+    }
+
+    private void styleDateChooserField(JDateChooser datePicker) {
+        Border defaultBorder = buildRoundedInputBorder(INPUT_BORDER_COLOR);
+        Border focusBorder = buildRoundedInputBorder(INPUT_FOCUS_BORDER_COLOR);
+        Border hoverBorder = buildRoundedInputBorder(INPUT_HOVER_BORDER_COLOR);
+        Border invalidBorder = buildRoundedInputBorder(INPUT_ERROR_BORDER_COLOR);
+
+        datePicker.setBorder(defaultBorder);
+        datePicker.putClientProperty("qc.defaultBorder", defaultBorder);
+        datePicker.putClientProperty("qc.focusBorder", focusBorder);
+        datePicker.putClientProperty("qc.hoverBorder", hoverBorder);
+        datePicker.putClientProperty("qc.invalidBorder", invalidBorder);
+        datePicker.putClientProperty("qc.invalid", Boolean.FALSE);
+        datePicker.setOpaque(true);
+        datePicker.setBackground(Color.WHITE);
+        datePicker.setPreferredSize(new Dimension(320, 42));
+        datePicker.setMinimumSize(new Dimension(320, 42));
+
+        JTextField editorField = (JTextField) datePicker.getDateEditor().getUiComponent();
+        editorField.setEditable(false);
+        editorField.setFocusable(true);
+        editorField.setHorizontalAlignment(SwingConstants.LEFT);
+        editorField.setBackground(Color.WHITE);
+        editorField.setForeground(new Color(35, 46, 68));
+        editorField.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        editorField.setBorder(BorderFactory.createEmptyBorder(3, 4, 3, 6));
+        editorField.setCaretColor(new Color(61, 99, 210));
+
+        JButton calendarButton = datePicker.getCalendarButton();
+        Color buttonBaseColor = new Color(244, 247, 255);
+        Color buttonHoverColor = new Color(234, 241, 255);
+        Color buttonFocusColor = new Color(223, 234, 255);
+        if (calendarButton != null) {
+            calendarButton.setFocusable(true);
+            calendarButton.setFocusPainted(false);
+            calendarButton.setContentAreaFilled(true);
+            calendarButton.setOpaque(true);
+            calendarButton.setBackground(buttonBaseColor);
+            calendarButton.setForeground(new Color(56, 88, 188));
+            calendarButton.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            calendarButton.setBorder(
+                BorderFactory.createCompoundBorder(
+                    new LineBorder(new Color(205, 217, 239), 1, true),
+                    BorderFactory.createEmptyBorder(0, 0, 0, 0)
+                )
+            );
+            calendarButton.setPreferredSize(new Dimension(40, 34));
+            calendarButton.setMinimumSize(new Dimension(40, 34));
+            calendarButton.setMaximumSize(new Dimension(40, 34));
+            calendarButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            calendarButton.setToolTipText("Choose date");
+            datePicker.putClientProperty("qc.calendarButton", calendarButton);
+            datePicker.putClientProperty("qc.calendarButtonBaseColor", buttonBaseColor);
+        }
+
+        Runnable applyDefaultBorder = () -> {
+            if (!Boolean.TRUE.equals(datePicker.getClientProperty("qc.invalid"))) {
+                datePicker.setBorder(defaultBorder);
+            }
+        };
+        Runnable applyFocusBorder = () -> {
+            if (!Boolean.TRUE.equals(datePicker.getClientProperty("qc.invalid"))) {
+                datePicker.setBorder(focusBorder);
+                if (calendarButton != null) {
+                    calendarButton.setBackground(buttonFocusColor);
+                }
+            }
+        };
+        Runnable applyHoverBorder = () -> {
+            if (!Boolean.TRUE.equals(datePicker.getClientProperty("qc.invalid"))) {
+                datePicker.setBorder(hoverBorder);
+                if (calendarButton != null) {
+                    calendarButton.setBackground(buttonHoverColor);
+                }
+            }
+        };
+        Runnable applyButtonBaseColor = () -> {
+            if (calendarButton != null) {
+                calendarButton.setBackground(buttonBaseColor);
+            }
+        };
+
+        FocusAdapter focusAdapter = new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                applyFocusBorder.run();
+            }
+
+            @Override
+            public void focusLost(FocusEvent e) {
+                javax.swing.SwingUtilities.invokeLater(() -> {
+                    if (editorField.isFocusOwner()
+                        || (calendarButton != null && calendarButton.isFocusOwner())) {
+                        applyFocusBorder.run();
+                    } else {
+                        applyDefaultBorder.run();
+                        applyButtonBaseColor.run();
+                    }
+                });
+            }
+        };
+        editorField.addFocusListener(focusAdapter);
+        if (calendarButton != null) {
+            calendarButton.addFocusListener(focusAdapter);
+        }
+
+        MouseAdapter hoverAdapter = new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                applyHoverBorder.run();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                javax.swing.SwingUtilities.invokeLater(() -> {
+                    if (editorField.isFocusOwner()
+                        || (calendarButton != null && calendarButton.isFocusOwner())) {
+                        applyFocusBorder.run();
+                    } else {
+                        applyDefaultBorder.run();
+                        applyButtonBaseColor.run();
+                    }
+                });
+            }
+        };
+        datePicker.addMouseListener(hoverAdapter);
+        editorField.addMouseListener(hoverAdapter);
+        if (calendarButton != null) {
+            calendarButton.addMouseListener(hoverAdapter);
+        }
+    }
+
     private void styleInputField(JTextField field) {
         field.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        field.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(210, 220, 236)),
-            BorderFactory.createEmptyBorder(8, 10, 8, 10)
-        ));
+        applyDefaultFieldBorder(field);
+    }
+
+    private void applyLettersOnlyInputRestriction(JTextField field) {
+        applyFilteredInputRestriction(field, "[A-Za-z]*", -1);
+    }
+
+    private void applyDigitsOnlyInputRestriction(JTextField field, int maxLength) {
+        applyFilteredInputRestriction(field, "\\d*", maxLength);
+    }
+
+    private void applyFilteredInputRestriction(JTextField field, String allowedRegex, int maxLength) {
+        if (!(field.getDocument() instanceof AbstractDocument)) {
+            return;
+        }
+        AbstractDocument document = (AbstractDocument) field.getDocument();
+        document.setDocumentFilter(new DocumentFilter() {
+            @Override
+            public void insertString(FilterBypass fb, int offset, String string, AttributeSet attr) throws BadLocationException {
+                replace(fb, offset, 0, string, attr);
+            }
+
+            @Override
+            public void replace(FilterBypass fb, int offset, int length, String text, AttributeSet attrs) throws BadLocationException {
+                String incoming = text == null ? "" : text;
+                String current = fb.getDocument().getText(0, fb.getDocument().getLength());
+                String next = current.substring(0, offset) + incoming + current.substring(offset + length);
+
+                if ((maxLength < 0 || next.length() <= maxLength) && next.matches(allowedRegex)) {
+                    super.replace(fb, offset, length, text, attrs);
+                }
+            }
+        });
+    }
+
+    private void stylePasswordField(JPasswordField field) {
+        field.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        applyDefaultFieldBorder(field);
     }
 
     private void refreshAppointmentCalendarHeader() {
-        if (appointmentCalendarDateField != null) {
-            appointmentCalendarDateField.setText(appointmentCalendarDate.format(CALENDAR_INPUT_FORMAT));
+        if (appointmentCalendarDatePicker != null) {
+            java.util.Date pickerDate = appointmentCalendarDatePicker.getDate();
+            LocalDate pickerLocalDate = pickerDate == null
+                ? null
+                : new Date(pickerDate.getTime()).toLocalDate();
+            if (pickerLocalDate == null || !pickerLocalDate.equals(appointmentCalendarDate)) {
+                appointmentCalendarDatePicker.setDate(Date.valueOf(appointmentCalendarDate));
+            }
         }
         if (appointmentCalendarTitleLabel != null) {
-            String title = appointmentCalendarDate.getDayOfWeek().name().substring(0, 1)
-                + appointmentCalendarDate.getDayOfWeek().name().substring(1).toLowerCase(Locale.ENGLISH)
-                + ", " + appointmentCalendarDate.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH));
+            String title = appointmentCalendarDate.format(APPOINTMENT_CALENDAR_TITLE_FORMAT);
             appointmentCalendarTitleLabel.setText(title);
         }
     }
 
-    private boolean applyCalendarDateFromInput() {
-        if (appointmentCalendarDateField == null) {
-            return false;
+    private void setAppointmentCalendarDate(LocalDate newDate) {
+        if (newDate == null) {
+            return;
         }
-        try {
-            LocalDate parsed = LocalDate.parse(appointmentCalendarDateField.getText().trim(), CALENDAR_INPUT_FORMAT);
-            appointmentCalendarDate = parsed;
-            refreshAppointmentCalendarHeader();
-            return true;
-        } catch (Exception ex) {
-            refreshAppointmentCalendarHeader();
-            return false;
+        if (!newDate.equals(appointmentCalendarDate)) {
+            appointmentCalendarDate = newDate;
         }
+        refreshAppointmentCalendarHeader();
+        refreshAppointmentRows();
     }
 
     private void ensureDatabaseSchema() {
@@ -1567,6 +1902,7 @@ public class AdminDashboardFrame extends JFrame {
                 "patient_code VARCHAR(20) UNIQUE, " +
                 "full_name VARCHAR(120) NOT NULL, " +
                 "contact_number VARCHAR(40) NOT NULL, " +
+                "emergency_contact_number VARCHAR(40) NULL, " +
                 "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
             );
             st.executeUpdate(
@@ -1576,6 +1912,8 @@ public class AdminDashboardFrame extends JFrame {
                 "appointment_date DATE NOT NULL, " +
                 "appointment_time TIME NOT NULL, " +
                 "reason VARCHAR(255) NOT NULL, " +
+                "allergies VARCHAR(255) NOT NULL DEFAULT 'N/A', " +
+                "notes VARCHAR(500) NULL, " +
                 "status VARCHAR(20) NOT NULL DEFAULT 'pending', " +
                 "cancel_reason VARCHAR(255) DEFAULT '-', " +
                 "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
@@ -1590,6 +1928,98 @@ public class AdminDashboardFrame extends JFrame {
                 "status VARCHAR(20) NOT NULL DEFAULT 'active', " +
                 "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
             );
+        }
+        ensurePatientTableStructure(con);
+        ensureAppointmentTableStructure(con);
+    }
+
+    private void ensurePatientTableStructure(Connection con) throws SQLException {
+        Set<String> patientColumns = getTableColumns(con, "patients");
+        if (!patientColumns.contains("emergency_contact_number")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE patients ADD COLUMN emergency_contact_number VARCHAR(40) NULL");
+            }
+        }
+
+        try (Statement st = con.createStatement()) {
+            st.executeUpdate(
+                "UPDATE patients SET emergency_contact_number=NULL " +
+                "WHERE emergency_contact_number IS NOT NULL " +
+                "AND (TRIM(emergency_contact_number)='' OR TRIM(emergency_contact_number)='-')"
+            );
+        }
+
+        ensureUniqueIndexIfPossible(con, "patients", "uq_patients_contact_number", "contact_number");
+        ensureUniqueIndexIfPossible(con, "patients", "uq_patients_emergency_contact_number", "emergency_contact_number");
+    }
+
+    private void ensureAppointmentTableStructure(Connection con) throws SQLException {
+        Set<String> appointmentColumns = getTableColumns(con, "appointments");
+        if (!appointmentColumns.contains("allergies")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointments ADD COLUMN allergies VARCHAR(255) NOT NULL DEFAULT 'N/A'");
+            }
+            appointmentColumns = getTableColumns(con, "appointments");
+        }
+        if (!appointmentColumns.contains("notes")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointments ADD COLUMN notes VARCHAR(500) NULL");
+            }
+            appointmentColumns = getTableColumns(con, "appointments");
+        }
+        if (!appointmentColumns.contains("status")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'pending'");
+            }
+        }
+
+        try (Statement st = con.createStatement()) {
+            st.executeUpdate(
+                "UPDATE appointments SET allergies='N/A' " +
+                "WHERE allergies IS NULL OR TRIM(allergies)=''"
+            );
+            st.executeUpdate(
+                "UPDATE appointments SET status='pending' " +
+                "WHERE status IS NULL OR TRIM(status)=''"
+            );
+            st.executeUpdate(
+                "UPDATE appointments SET notes='' " +
+                "WHERE notes IS NULL"
+            );
+        }
+    }
+
+    private void ensureUniqueIndexIfPossible(Connection con, String table, String indexName, String column) throws SQLException {
+        if (hasIndex(con, table, indexName) || hasDuplicateNonBlankValues(con, table, column)) {
+            return;
+        }
+        try (Statement st = con.createStatement()) {
+            st.executeUpdate("CREATE UNIQUE INDEX " + indexName + " ON " + table + " (" + column + ")");
+        } catch (SQLException ignored) {
+            // Keep app-level validation as fallback when index creation is not possible.
+        }
+    }
+
+    private boolean hasIndex(Connection con, String tableName, String indexName) throws SQLException {
+        DatabaseMetaData meta = con.getMetaData();
+        try (ResultSet rs = meta.getIndexInfo(con.getCatalog(), null, tableName, false, false)) {
+            while (rs.next()) {
+                String existing = rs.getString("INDEX_NAME");
+                if (existing != null && existing.equalsIgnoreCase(indexName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasDuplicateNonBlankValues(Connection con, String tableName, String columnName) throws SQLException {
+        String sql = "SELECT 1 FROM " + tableName +
+            " WHERE " + columnName + " IS NOT NULL AND TRIM(" + columnName + ") <> '' " +
+            "GROUP BY " + columnName + " HAVING COUNT(*) > 1 LIMIT 1";
+        try (PreparedStatement pst = con.prepareStatement(sql);
+             ResultSet rs = pst.executeQuery()) {
+            return rs.next();
         }
     }
 
@@ -1622,19 +2052,21 @@ public class AdminDashboardFrame extends JFrame {
         Set<String> srcCols = getTableColumns(con, source);
         String nameCol = firstExisting(srcCols, "full_name", "name", "patient_name");
         String contactCol = firstExisting(srcCols, "contact_number", "contact", "contact_no", "phone");
+        String emergencyCol = firstExisting(srcCols, "emergency_contact_number", "emergency_contact", "emergency_contact_no", "emergency_phone");
         String codeCol = firstExisting(srcCols, "patient_code", "patient_id", "code");
         if (nameCol == null || contactCol == null) {
             return;
         }
 
         String sql = "SELECT `" + nameCol + "` AS full_name, `" + contactCol + "` AS contact_number" +
+            (emergencyCol != null ? ", `" + emergencyCol + "` AS emergency_contact_number" : "") +
             (codeCol != null ? ", `" + codeCol + "` AS patient_code" : "") +
             " FROM `" + source + "`";
         int fallbackSeq = 1;
         try (Statement read = con.createStatement();
              ResultSet rs = read.executeQuery(sql);
              PreparedStatement insert = con.prepareStatement(
-                 "INSERT INTO patients (patient_code, full_name, contact_number) VALUES (?, ?, ?)"
+                 "INSERT INTO patients (patient_code, full_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?)"
              )) {
             while (rs.next()) {
                 String fullName = rs.getString("full_name");
@@ -1646,9 +2078,14 @@ public class AdminDashboardFrame extends JFrame {
                 if (code == null || code.isBlank()) {
                     code = String.format("PT-MIG-%04d", fallbackSeq++);
                 }
+                String emergencyContact = emergencyCol == null ? null : rs.getString("emergency_contact_number");
+                if (emergencyContact != null && emergencyContact.isBlank()) {
+                    emergencyContact = null;
+                }
                 insert.setString(1, code);
                 insert.setString(2, fullName.trim());
                 insert.setString(3, contact.trim());
+                insert.setString(4, emergencyContact == null ? null : emergencyContact.trim());
                 try {
                     insert.executeUpdate();
                 } catch (SQLException ignored) {
@@ -1671,6 +2108,8 @@ public class AdminDashboardFrame extends JFrame {
         String dateCol = firstExisting(srcCols, "appointment_date", "date");
         String timeCol = firstExisting(srcCols, "appointment_time", "time");
         String reasonCol = firstExisting(srcCols, "reason", "purpose");
+        String allergiesCol = firstExisting(srcCols, "allergies", "allergy");
+        String notesCol = firstExisting(srcCols, "notes", "note");
         String statusCol = firstExisting(srcCols, "status");
         String cancelCol = firstExisting(srcCols, "cancel_reason", "cancellation_reason");
         if (patientCol == null || dateCol == null || timeCol == null || reasonCol == null) {
@@ -1679,20 +2118,26 @@ public class AdminDashboardFrame extends JFrame {
 
         String sql = "SELECT `" + patientCol + "` AS patient_name, `" + dateCol + "` AS appointment_date, " +
             "`" + timeCol + "` AS appointment_time, `" + reasonCol + "` AS reason" +
+            (allergiesCol != null ? ", `" + allergiesCol + "` AS allergies" : "") +
+            (notesCol != null ? ", `" + notesCol + "` AS notes" : "") +
             (statusCol != null ? ", `" + statusCol + "` AS status" : "") +
             (cancelCol != null ? ", `" + cancelCol + "` AS cancel_reason" : "") +
             " FROM `" + source + "`";
         try (Statement read = con.createStatement();
              ResultSet rs = read.executeQuery(sql);
              PreparedStatement insert = con.prepareStatement(
-                 "INSERT INTO appointments (patient_name, appointment_date, appointment_time, reason, status, cancel_reason) " +
-                 "VALUES (?, ?, ?, ?, ?, ?)"
+                 "INSERT INTO appointments (patient_name, appointment_date, appointment_time, reason, allergies, notes, status, cancel_reason) " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
              )) {
             while (rs.next()) {
                 String patient = rs.getString("patient_name");
                 String reason = rs.getString("reason");
                 if (patient == null || patient.isBlank() || reason == null || reason.isBlank()) {
                     continue;
+                }
+                String allergies = allergiesCol == null ? "N/A" : rs.getString("allergies");
+                if (allergies == null || allergies.isBlank()) {
+                    allergies = "N/A";
                 }
                 LocalDate date = parseDateValue(rs.getObject("appointment_date"));
                 LocalTime time = parseTimeValue(rs.getObject("appointment_time"));
@@ -1701,13 +2146,19 @@ public class AdminDashboardFrame extends JFrame {
                 if (cancelReason == null || cancelReason.isBlank()) {
                     cancelReason = "-";
                 }
+                String notes = notesCol == null ? "" : rs.getString("notes");
+                if (notes == null) {
+                    notes = "";
+                }
 
                 insert.setString(1, patient.trim());
                 insert.setDate(2, Date.valueOf(date));
                 insert.setTime(3, Time.valueOf(time.withSecond(0).withNano(0)));
                 insert.setString(4, reason.trim());
-                insert.setString(5, status);
-                insert.setString(6, cancelReason);
+                insert.setString(5, allergies.trim());
+                insert.setString(6, notes.trim());
+                insert.setString(7, status);
+                insert.setString(8, cancelReason);
                 try {
                     insert.executeUpdate();
                 } catch (SQLException ignored) {
@@ -1920,7 +2371,8 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void loadPatientsFromDatabase(Connection con) throws SQLException {
-        String sql = "SELECT id, patient_code, full_name, contact_number FROM patients ORDER BY id DESC";
+        String sql = "SELECT id, patient_code, full_name, contact_number, emergency_contact_number " +
+            "FROM patients ORDER BY id DESC";
         try (PreparedStatement pst = con.prepareStatement(sql);
              ResultSet rs = pst.executeQuery()) {
             while (rs.next()) {
@@ -1929,18 +2381,25 @@ public class AdminDashboardFrame extends JFrame {
                 if (code == null || code.isBlank()) {
                     code = String.format("PT-%04d", id);
                 }
+                String emergencyContact = rs.getString("emergency_contact_number");
+                if (emergencyContact == null) {
+                    emergencyContact = "";
+                }
                 patientRecords.add(new PatientRecord(
                     id,
                     code,
                     rs.getString("full_name"),
-                    rs.getString("contact_number")
+                    rs.getString("contact_number"),
+                    emergencyContact
                 ));
             }
         }
     }
 
     private void loadAppointmentsFromDatabase(Connection con) throws SQLException {
-        String sql = "SELECT id, patient_name, appointment_date, appointment_time, reason, status, " +
+        String sql = "SELECT id, patient_name, appointment_date, appointment_time, reason, " +
+                     "COALESCE(NULLIF(TRIM(allergies), ''), 'N/A') AS allergies, " +
+                     "COALESCE(notes, '') AS notes, status, " +
                      "COALESCE(cancel_reason, '-') AS cancel_reason " +
                      "FROM appointments ORDER BY appointment_date DESC, appointment_time DESC";
         try (PreparedStatement pst = con.prepareStatement(sql);
@@ -1964,6 +2423,8 @@ public class AdminDashboardFrame extends JFrame {
                     appointmentDate.format(DATE_LABEL_FORMAT),
                     appointmentTime.format(APPOINTMENT_INPUT_TIME_FORMAT),
                     rs.getString("reason"),
+                    rs.getString("allergies"),
+                    rs.getString("notes"),
                     status,
                     cancelReason,
                     appointmentDate,
@@ -2048,19 +2509,42 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
-    private boolean insertAppointmentToDatabase(String patientName, LocalDate appointmentDate, LocalTime appointmentTime, String reason) {
-        String sql = "INSERT INTO appointments (patient_name, appointment_date, appointment_time, reason, status, cancel_reason) " +
-                     "VALUES (?, ?, ?, ?, 'pending', '-')";
+    private boolean insertAppointmentToDatabase(
+        String patientName,
+        LocalDate appointmentDate,
+        LocalTime appointmentTime,
+        String reason,
+        String allergies,
+        String notes
+    ) {
+        String normalizedPatient = patientName == null ? "" : patientName.trim();
+        String normalizedReason = reason == null ? "" : reason.trim();
+        String normalizedAllergies = allergies == null ? "" : allergies.trim();
+        String normalizedNotes = notes == null ? "" : notes.trim();
+        if (normalizedPatient.isBlank() || normalizedReason.isBlank() || appointmentDate == null || appointmentTime == null) {
+            return false;
+        }
+        if (normalizedAllergies.isBlank()) {
+            normalizedAllergies = "N/A";
+        }
+
+        String sql = "INSERT INTO appointments (patient_name, appointment_date, appointment_time, reason, allergies, notes, status, cancel_reason) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, 'pending', '-')";
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
                 return false;
             }
             ensureClinicTables(con);
+            if (hasOverlappingAppointment(con, appointmentDate, appointmentTime, APPOINTMENT_DURATION_MINUTES, null)) {
+                return false;
+            }
             try (PreparedStatement pst = con.prepareStatement(sql)) {
-                pst.setString(1, patientName);
+                pst.setString(1, normalizedPatient);
                 pst.setDate(2, Date.valueOf(appointmentDate));
                 pst.setTime(3, Time.valueOf(appointmentTime.withSecond(0).withNano(0)));
-                pst.setString(4, reason);
+                pst.setString(4, normalizedReason);
+                pst.setString(5, normalizedAllergies);
+                pst.setString(6, normalizedNotes);
                 return pst.executeUpdate() > 0;
             }
         } catch (SQLException e) {
@@ -2086,18 +2570,33 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
-    private boolean insertPatientToDatabase(String fullName, String contactNumber) {
-        String sql = "INSERT INTO patients (patient_code, full_name, contact_number) VALUES (?, ?, ?)";
+    private boolean confirmAppointmentStatusUpdate() {
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            "Are you sure you want to update this appointment status?",
+            "Confirm Status Update",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE
+        );
+        return result == JOptionPane.YES_OPTION;
+    }
+
+    private boolean insertPatientToDatabase(String fullName, String contactNumber, String emergencyContactNumber) {
+        String sql = "INSERT INTO patients (patient_code, full_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?)";
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
                 return false;
             }
             ensureClinicTables(con);
+            if (patientContactNumberExists(con, contactNumber, null) || patientContactNumberExists(con, emergencyContactNumber, null)) {
+                return false;
+            }
             String code = nextPatientCodeFromDatabase(con);
             try (PreparedStatement pst = con.prepareStatement(sql)) {
                 pst.setString(1, code);
                 pst.setString(2, fullName);
                 pst.setString(3, contactNumber);
+                pst.setString(4, emergencyContactNumber);
                 return pst.executeUpdate() > 0;
             }
         } catch (SQLException e) {
@@ -2106,20 +2605,57 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
-    private boolean updatePatientInDatabase(PatientRecord record, String fullName, String contactNumber) {
-        String sql = "UPDATE patients SET full_name=?, contact_number=? WHERE id=?";
+    private boolean updatePatientInDatabase(
+        PatientRecord record,
+        String fullName,
+        String contactNumber,
+        String emergencyContactNumber
+    ) {
+        String sql = "UPDATE patients SET full_name=?, contact_number=?, emergency_contact_number=? WHERE id=?";
         try (Connection con = DBConnection.getConnection();
              PreparedStatement pst = con == null ? null : con.prepareStatement(sql)) {
             if (con == null || pst == null) {
                 return false;
             }
+            ensureClinicTables(con);
+            if (patientContactNumberExists(con, contactNumber, record.id)
+                || patientContactNumberExists(con, emergencyContactNumber, record.id)) {
+                return false;
+            }
             pst.setString(1, fullName);
             pst.setString(2, contactNumber);
-            pst.setInt(3, record.id);
+            pst.setString(3, emergencyContactNumber);
+            pst.setInt(4, record.id);
             return pst.executeUpdate() > 0;
         } catch (SQLException e) {
             e.printStackTrace();
             return false;
+        }
+    }
+
+    private boolean patientContactNumberExists(Connection con, String contactNumber, Integer excludePatientId) throws SQLException {
+        String normalized = normalizePhoneNumber(contactNumber);
+        if (normalized.isBlank()) {
+            return false;
+        }
+
+        StringBuilder sql = new StringBuilder(
+            "SELECT 1 FROM patients WHERE (contact_number=? OR emergency_contact_number=?)"
+        );
+        if (excludePatientId != null) {
+            sql.append(" AND id<>?");
+        }
+        sql.append(" LIMIT 1");
+
+        try (PreparedStatement pst = con.prepareStatement(sql.toString())) {
+            pst.setString(1, normalized);
+            pst.setString(2, normalized);
+            if (excludePatientId != null) {
+                pst.setInt(3, excludePatientId);
+            }
+            try (ResultSet rs = pst.executeQuery()) {
+                return rs.next();
+            }
         }
     }
 
@@ -2300,70 +2836,219 @@ public class AdminDashboardFrame extends JFrame {
 
     private void openAddAppointmentDialog() {
         JTextField patient = new JTextField();
-        JTextField date = new JTextField();
-        JTextField time = new JTextField();
+        JDateChooser datePicker = new JDateChooser();
+        datePicker.setDateFormatString("MM/dd/yyyy");
+        datePicker.setDate(new java.util.Date());
+
+        JComboBox<String> timeSelector = new JComboBox<>(buildAppointmentTimeOptions());
         JTextField reason = new JTextField();
+        JTextField allergies = new JTextField();
+        JTextField notes = new JTextField();
+
         styleInputField(patient);
-        styleInputField(date);
-        styleInputField(time);
         styleInputField(reason);
+        styleInputField(allergies);
+        styleInputField(notes);
+        styleDateChooserField(datePicker);
+        applyDefaultFieldBorder(timeSelector);
 
-        date.setText(LocalDate.now().format(APPOINTMENT_INPUT_DATE_FORMAT));
-        time.setText("09:00");
+        timeSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        timeSelector.setBackground(Color.WHITE);
+        timeSelector.setPreferredSize(new Dimension(320, 42));
+        timeSelector.setSelectedItem("9:00 AM");
 
-        JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-        form.add(new JLabel("Patient Name"));
-        form.add(patient);
-        form.add(new JLabel("Date (e.g. Apr 27, 2026)"));
-        form.add(date);
-        form.add(new JLabel("Time (e.g. 09:00)"));
-        form.add(time);
-        form.add(new JLabel("Reason"));
-        form.add(reason);
+        patient.setPreferredSize(new Dimension(320, 42));
+        reason.setPreferredSize(new Dimension(320, 42));
+        allergies.setPreferredSize(new Dimension(320, 42));
+        notes.setPreferredSize(new Dimension(320, 42));
 
-        int result = JOptionPane.showConfirmDialog(
-            this,
-            form,
-            "Add Appointment",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.PLAIN_MESSAGE
-        );
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createEmptyBorder(12, 10, 8, 10));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
 
-        if (result != JOptionPane.OK_OPTION) {
+        form.add(new JLabel("Patient Name"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(patient, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Appointment Date"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(datePicker, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Appointment Time"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(timeSelector, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Reason"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(reason, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Allergies (optional)"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(allergies, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Notes (optional)"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 0, 0);
+        form.add(notes, gbc);
+
+        while (true) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Add Appointment",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+            );
+
+            if (result != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            resetFieldValidationState(patient, datePicker, timeSelector, reason, allergies, notes);
+
+            String patientName = patient.getText().trim();
+            String reasonText = reason.getText().trim();
+            String allergiesText = allergies.getText().trim();
+            String notesText = notes.getText().trim();
+
+            java.util.Date selectedDateValue = datePicker.getDate();
+            if (selectedDateValue == null) {
+                highlightInvalidField(datePicker);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Please select an appointment date.",
+                    "Invalid Appointment Date",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+            LocalDate appointmentDate = new Date(selectedDateValue.getTime()).toLocalDate();
+            String dateText = appointmentDate.format(APPOINTMENT_FORM_DATE_FORMAT);
+            String timeText = timeSelector.getSelectedItem() == null
+                ? ""
+                : timeSelector.getSelectedItem().toString().trim();
+
+            if (patientName.isBlank()) {
+                highlightInvalidField(patient);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Patient Name is required.",
+                    "Invalid Patient Name",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String dateValidationError = validateAppointmentDateInput(dateText);
+            if (dateValidationError != null) {
+                highlightInvalidField(datePicker);
+                JOptionPane.showMessageDialog(
+                    this,
+                    dateValidationError,
+                    "Invalid Appointment Date",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String timeValidationError = validateAppointmentTimeInput(timeText);
+            if (timeValidationError != null) {
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    timeValidationError,
+                    "Invalid Appointment Time",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            if (reasonText.isBlank()) {
+                highlightInvalidField(reason);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Reason for appointment is required.",
+                    "Invalid Reason",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            if (allergiesText.isBlank()) {
+                allergiesText = "N/A";
+            }
+
+            LocalTime appointmentTime;
+            try {
+                appointmentTime = parseAppointmentFormTime(timeText);
+            } catch (Exception ex) {
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Invalid appointment time. Use h:mm AM/PM format (example: 9:00 AM).",
+                    "Invalid Appointment Time",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String overlapError = validateAppointmentSlotAvailability(appointmentDate, appointmentTime, null);
+            if (overlapError != null) {
+                highlightInvalidField(datePicker);
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(this, overlapError, "Schedule Conflict", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            if (!insertAppointmentToDatabase(
+                patientName,
+                appointmentDate,
+                appointmentTime,
+                reasonText,
+                allergiesText,
+                notesText
+            )) {
+                String postCheckOverlapError = validateAppointmentSlotAvailability(appointmentDate, appointmentTime, null);
+                if (TIME_SLOT_BOOKED_MESSAGE.equals(postCheckOverlapError)) {
+                    highlightInvalidField(datePicker);
+                    highlightInvalidField(timeSelector);
+                    JOptionPane.showMessageDialog(this, postCheckOverlapError, "Schedule Conflict", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not save the appointment. Please check your database connection and try again.",
+                    "Save Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                continue;
+            }
+
+            refreshAllViews();
             return;
         }
-
-        if (patient.getText().isBlank() || date.getText().isBlank() || time.getText().isBlank() || reason.getText().isBlank()) {
-            JOptionPane.showMessageDialog(this, "Please fill all fields.");
-            return;
-        }
-
-        LocalDate appointmentDate;
-        LocalTime appointmentTime;
-        try {
-            appointmentDate = LocalDate.parse(date.getText().trim(), APPOINTMENT_INPUT_DATE_FORMAT);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Invalid date format. Use e.g. Apr 27, 2026");
-            return;
-        }
-        try {
-            appointmentTime = LocalTime.parse(time.getText().trim(), APPOINTMENT_INPUT_TIME_FORMAT);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Invalid time format. Use 24h format HH:mm (e.g. 09:00).");
-            return;
-        }
-
-        if (!insertAppointmentToDatabase(
-            patient.getText().trim(),
-            appointmentDate,
-            appointmentTime,
-            reason.getText().trim()
-        )) {
-            JOptionPane.showMessageDialog(this, "Failed to save appointment to database.");
-            return;
-        }
-
-        refreshAllViews();
     }
 
     private void openAddReceptionistDialog() {
@@ -2372,11 +3057,7 @@ public class AdminDashboardFrame extends JFrame {
         JPasswordField password = new JPasswordField();
         styleInputField(name);
         styleInputField(username);
-        password.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        password.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(210, 220, 236)),
-            BorderFactory.createEmptyBorder(8, 10, 8, 10)
-        ));
+        stylePasswordField(password);
 
         JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
         form.add(new JLabel("Full Name"));
@@ -2386,71 +3067,198 @@ public class AdminDashboardFrame extends JFrame {
         form.add(new JLabel("Password"));
         form.add(password);
 
-        int result = JOptionPane.showConfirmDialog(
-            this,
-            form,
-            "Add Receptionist",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.PLAIN_MESSAGE
-        );
+        while (true) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Add Receptionist",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+            );
 
-        if (result != JOptionPane.OK_OPTION) {
+            if (result != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            resetFieldValidationState(name, username, password);
+
+            String nameText = name.getText().trim();
+            String usernameText = username.getText().trim();
+            String plainPassword = new String(password.getPassword()).trim();
+
+            String nameError = validateReceptionistName(nameText);
+            if (nameError != null) {
+                highlightInvalidField(name);
+                JOptionPane.showMessageDialog(this, nameError, "Invalid Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String usernameError = validateReceptionistUsername(usernameText);
+            if (usernameError != null) {
+                highlightInvalidField(username);
+                JOptionPane.showMessageDialog(this, usernameError, "Invalid Username", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String passwordError = validateReceptionistPassword(plainPassword);
+            if (passwordError != null) {
+                highlightInvalidField(password);
+                JOptionPane.showMessageDialog(this, passwordError, "Invalid Password", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String usernameDuplicateError = validateReceptionistUsernameUniqueness(usernameText, null, null);
+            if (usernameDuplicateError != null) {
+                highlightInvalidField(username);
+                JOptionPane.showMessageDialog(this, usernameDuplicateError, "Duplicate Username", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            if (!insertReceptionistToDatabase(nameText, usernameText, plainPassword)) {
+                String duplicateAfterSaveError = validateReceptionistUsernameUniqueness(usernameText, null, null);
+                if (duplicateAfterSaveError != null && duplicateAfterSaveError.startsWith("Username already exists")) {
+                    highlightInvalidField(username);
+                    JOptionPane.showMessageDialog(this, duplicateAfterSaveError, "Duplicate Username", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not save receptionist account. Please check your database connection and try again.",
+                    "Save Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                continue;
+            }
+
+            refreshAllViews();
             return;
         }
-
-        String plainPassword = new String(password.getPassword());
-        if (name.getText().isBlank() || username.getText().isBlank() || plainPassword.isBlank()) {
-            JOptionPane.showMessageDialog(this, "Please fill all fields.");
-            return;
-        }
-
-        if (!insertReceptionistToDatabase(
-            name.getText().trim(),
-            username.getText().trim(),
-            plainPassword
-        )) {
-            JOptionPane.showMessageDialog(this, "Failed to save receptionist to database.");
-            return;
-        }
-
-        refreshAllViews();
     }
 
     private void openAddPatientDialog() {
-        JTextField name = new JTextField();
+        JTextField firstName = new JTextField();
+        JTextField middleName = new JTextField();
+        JTextField lastName = new JTextField();
         JTextField contact = new JTextField();
-        styleInputField(name);
+        JTextField emergencyContact = new JTextField();
+        styleInputField(firstName);
+        styleInputField(middleName);
+        styleInputField(lastName);
         styleInputField(contact);
+        styleInputField(emergencyContact);
+        applyLettersOnlyInputRestriction(firstName);
+        applyLettersOnlyInputRestriction(middleName);
+        applyLettersOnlyInputRestriction(lastName);
+        applyDigitsOnlyInputRestriction(contact, 11);
+        applyDigitsOnlyInputRestriction(emergencyContact, 11);
 
         JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-        form.add(new JLabel("Patient Name"));
-        form.add(name);
+        form.add(new JLabel("First Name"));
+        form.add(firstName);
+        form.add(new JLabel("Middle Name"));
+        form.add(middleName);
+        form.add(new JLabel("Last Name"));
+        form.add(lastName);
         form.add(new JLabel("Contact Number"));
         form.add(contact);
+        form.add(new JLabel("Emergency Contact Number"));
+        form.add(emergencyContact);
 
-        int result = JOptionPane.showConfirmDialog(
-            this,
-            form,
-            "Add Patient",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.PLAIN_MESSAGE
-        );
+        while (true) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Add Patient",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+            );
 
-        if (result != JOptionPane.OK_OPTION) {
+            if (result != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact);
+
+            String firstError = validateRequiredPatientNamePart("First Name", firstName.getText());
+            if (firstError != null) {
+                highlightInvalidField(firstName);
+                JOptionPane.showMessageDialog(this, firstError, "Invalid First Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String middleError = validateOptionalPatientNamePart("Middle Name", middleName.getText());
+            if (middleError != null) {
+                highlightInvalidField(middleName);
+                JOptionPane.showMessageDialog(this, middleError, "Invalid Middle Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String lastError = validateRequiredPatientNamePart("Last Name", lastName.getText());
+            if (lastError != null) {
+                highlightInvalidField(lastName);
+                JOptionPane.showMessageDialog(this, lastError, "Invalid Last Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String contactError = validatePhoneNumber("Contact Number", contact.getText());
+            if (contactError != null) {
+                highlightInvalidField(contact);
+                JOptionPane.showMessageDialog(this, contactError, "Invalid Contact Number", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String emergencyContactError = validatePhoneNumber("Emergency Contact Number", emergencyContact.getText());
+            if (emergencyContactError != null) {
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(this, emergencyContactError, "Invalid Emergency Contact Number", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String normalizedContact = normalizePhoneNumber(contact.getText());
+            String normalizedEmergency = normalizePhoneNumber(emergencyContact.getText());
+            if (normalizedContact.equals(normalizedEmergency)) {
+                highlightInvalidField(contact);
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Contact Number and Emergency Contact Number must be different.",
+                    "Duplicate Contact Number",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String duplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, null);
+            if (duplicateError != null) {
+                highlightInvalidField(contact);
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(this, duplicateError, "Duplicate Contact Number", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String fullName = buildPatientFullName(firstName.getText(), middleName.getText(), lastName.getText());
+            if (!insertPatientToDatabase(fullName, normalizedContact, normalizedEmergency)) {
+                String postInsertDuplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, null);
+                if (postInsertDuplicateError != null
+                    && (postInsertDuplicateError.startsWith("Contact Number already exists")
+                        || postInsertDuplicateError.startsWith("Emergency Contact Number already exists"))) {
+                    highlightInvalidField(contact);
+                    highlightInvalidField(emergencyContact);
+                    JOptionPane.showMessageDialog(this, postInsertDuplicateError, "Duplicate Contact Number", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not save patient record. Please check your database connection and try again.",
+                    "Save Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                continue;
+            }
+
+            refreshAllViews();
             return;
         }
-
-        if (name.getText().isBlank() || contact.getText().isBlank()) {
-            JOptionPane.showMessageDialog(this, "Please fill all fields.");
-            return;
-        }
-
-        if (!insertPatientToDatabase(name.getText().trim(), contact.getText().trim())) {
-            JOptionPane.showMessageDialog(this, "Failed to save patient to database.");
-            return;
-        }
-
-        refreshAllViews();
     }
 
     private void refreshAllViews() {
@@ -2514,27 +3322,15 @@ public class AdminDashboardFrame extends JFrame {
 
         if (todayRecords.isEmpty()) {
             dashboardTodayRows.add(emptyStatePanel("No appointments yet.", "You have no appointments scheduled for today."));
+            updateDashboardTodayRowsHeight(1, true);
         } else {
-            int maxVisible = 5;
-            int shown = 0;
             for (AppointmentRecord record : todayRecords) {
-                if (shown >= maxVisible) {
-                    break;
-                }
-                if (shown > 0) {
-                    dashboardTodayRows.add(Box.createVerticalStrut(8));
+                if (dashboardTodayRows.getComponentCount() > 0) {
+                    dashboardTodayRows.add(Box.createVerticalStrut(DASHBOARD_TODAY_ROW_GAP));
                 }
                 dashboardTodayRows.add(dashboardTodayRow(record));
-                shown++;
             }
-            if (todayRecords.size() > maxVisible) {
-                dashboardTodayRows.add(Box.createVerticalStrut(10));
-                JLabel more = new JLabel("+" + (todayRecords.size() - maxVisible) + " more appointments today");
-                more.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-                more.setForeground(new Color(96, 111, 138));
-                more.setAlignmentX(Component.LEFT_ALIGNMENT);
-                dashboardTodayRows.add(more);
-            }
+            updateDashboardTodayRowsHeight(todayRecords.size(), false);
         }
 
         dashboardTodayRows.revalidate();
@@ -2575,7 +3371,7 @@ public class AdminDashboardFrame extends JFrame {
 
         if (filtered.isEmpty()) {
             patientRows.add(emptyStatePanel("No patients yet.", "No records to show."));
-            updateRowsPanelPreferredHeight(patientRows, 1);
+            updateRowsPanelHeightFromChildren(patientRows);
         } else {
             int i = 0;
             for (PatientRecord record : filtered) {
@@ -2585,7 +3381,7 @@ public class AdminDashboardFrame extends JFrame {
                 patientRows.add(patientRow(record));
                 i++;
             }
-            updateRowsPanelPreferredHeight(patientRows, filtered.size());
+            updateRowsPanelHeightFromChildren(patientRows);
         }
 
         patientRows.revalidate();
@@ -2605,15 +3401,27 @@ public class AdminDashboardFrame extends JFrame {
         for (AppointmentRecord record : appointmentRecords) {
             if ("pending".equals(record.status) && matchesAppointmentSearch(record)) {
                 pendingRecords.add(record);
-                if (appointmentCalendarDate.equals(record.appointmentDate)) {
-                    calendarRecords.add(record);
-                }
+            }
+            if (isSameCalendarDate(record, appointmentCalendarDate)) {
+                calendarRecords.add(record);
             }
         }
+        calendarRecords.sort((a, b) -> {
+            if (a.appointmentTime == null && b.appointmentTime == null) {
+                return safeText(a.timeText, "").compareToIgnoreCase(safeText(b.timeText, ""));
+            }
+            if (a.appointmentTime == null) {
+                return 1;
+            }
+            if (b.appointmentTime == null) {
+                return -1;
+            }
+            return a.appointmentTime.compareTo(b.appointmentTime);
+        });
 
         if (pendingRecords.isEmpty()) {
             appointmentTableRows.add(emptyStatePanel("No appointments yet.", "No pending records to show."));
-            updateRowsPanelPreferredHeight(appointmentTableRows, 1);
+            updateRowsPanelHeightFromChildren(appointmentTableRows);
         } else {
             int i = 0;
             for (AppointmentRecord record : pendingRecords) {
@@ -2623,16 +3431,20 @@ public class AdminDashboardFrame extends JFrame {
                 appointmentTableRows.add(appointmentTableRow(record));
                 i++;
             }
-            updateRowsPanelPreferredHeight(appointmentTableRows, pendingRecords.size());
+            updateRowsPanelHeightFromChildren(appointmentTableRows);
         }
 
         if (calendarRecords.isEmpty()) {
-            appointmentCalendarRows.add(emptyStatePanel("No appointments yet.", "No pending records for this date."));
+            appointmentCalendarRows.add(calendarDateEmptyStatePanel());
+            updateRowsPanelHeightFromChildren(appointmentCalendarRows);
         } else {
             for (AppointmentRecord record : calendarRecords) {
-                appointmentCalendarRows.add(calendarRow(record));
-                appointmentCalendarRows.add(Box.createVerticalStrut(10));
+                if (appointmentCalendarRows.getComponentCount() > 0) {
+                    appointmentCalendarRows.add(Box.createVerticalStrut(TABLE_ROW_GAP));
+                }
+                appointmentCalendarRows.add(appointmentTableRow(record));
             }
+            updateRowsPanelHeightFromChildren(appointmentCalendarRows);
         }
 
         appointmentTableRows.revalidate();
@@ -2642,54 +3454,78 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private JPanel appointmentTableRow(AppointmentRecord record) {
-        RoundedPanel row = tableRowCard(TABLE_ROW_HEIGHT);
-        row.setLayout(new BorderLayout(12, 0));
-
-        JLabel timeLabel = new JLabel(safeText(record.timeText, "--:--"));
-        timeLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        timeLabel.setForeground(new Color(63, 101, 228));
-        timeLabel.setPreferredSize(new Dimension(112, 40));
-        row.add(rowCell(timeLabel), BorderLayout.WEST);
-
-        JPanel details = new JPanel();
-        details.setOpaque(false);
-        details.setLayout(new BoxLayout(details, BoxLayout.Y_AXIS));
-        JLabel patientLabel = new JLabel(truncateText(safeText(record.patientName, "(No patient)"), 28));
-        patientLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        patientLabel.setForeground(new Color(33, 46, 71));
-        patientLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        String subtitleText = truncateText(
-            safeText(record.reason, "-") + "  •  " + safeText(record.dateText, "-"),
-            44
+        RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
+        row.setLayout(new GridBagLayout());
+        row.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
+                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+            )
         );
-        JLabel subtitleLabel = new JLabel(subtitleText);
-        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        subtitleLabel.setForeground(new Color(109, 124, 151));
-        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        details.add(patientLabel);
-        details.add(Box.createVerticalStrut(4));
-        details.add(subtitleLabel);
-        row.add(details, BorderLayout.CENTER);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+        String formattedDate = record.appointmentDate == null
+            ? safeText(record.dateText, "-")
+            : record.appointmentDate.format(APPOINTMENT_TABLE_DATE_FORMAT);
+        JLabel dateCell = rowLabelLimited(formattedDate, 12);
+        dateCell.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        addAppointmentTableGridCell(row, dateCell, 0, GridBagConstraints.NORTHWEST);
+
+        JLabel timeCell = rowLabel(safeText(record.timeText, "--:--"));
+        timeCell.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        timeCell.setForeground(new Color(63, 101, 228));
+        addAppointmentTableGridCell(row, timeCell, 1, GridBagConstraints.NORTHWEST);
+
+        JLabel patientCell = rowLabelLimited(safeText(record.patientName, "(No patient)"), 26);
+        patientCell.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        addAppointmentTableGridCell(row, patientCell, 2, GridBagConstraints.NORTHWEST);
+
+        JPanel reasonCell = appointmentWrappedTextCell(safeText(record.reason, "-"), appointmentColumnWidth(3) - 10);
+        addAppointmentTableGridCell(row, reasonCell, 3, GridBagConstraints.NORTHWEST);
+
+        JPanel allergiesCell = appointmentWrappedTextCell(safeText(record.allergies, "N/A"), appointmentColumnWidth(4) - 10);
+        addAppointmentTableGridCell(row, allergiesCell, 4, GridBagConstraints.NORTHWEST);
+
+        JPanel notesCell = appointmentWrappedTextCell(safeText(record.notes, "N/A"), appointmentColumnWidth(5) - 10);
+        addAppointmentTableGridCell(row, notesCell, 5, GridBagConstraints.NORTHWEST);
+
+        JPanel statusCell = statusBadge(record.status);
+        addAppointmentTableGridCell(row, statusCell, 6, GridBagConstraints.CENTER);
 
         JPanel actions = new JPanel();
         actions.setOpaque(false);
-        actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
-        actions.add(statusBadge(record.status));
-        actions.add(Box.createHorizontalStrut(14));
+        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
-        JButton completed = actionButton("✓", new Color(84, 195, 102));
-        completed.setToolTipText("Mark as completed");
-        completed.addActionListener(e -> {
+        JButton confirmButton = softActionButton("Confirm", new Color(231, 246, 236), new Color(46, 174, 102));
+        confirmButton.setPreferredSize(new Dimension(96, 30));
+        confirmButton.setMinimumSize(new Dimension(96, 30));
+        confirmButton.setMaximumSize(new Dimension(96, 30));
+        confirmButton.addActionListener(e -> {
+            if (!confirmAppointmentStatusUpdate()) {
+                return;
+            }
             if (!updateAppointmentStatusInDatabase(record.id, "completed", "-")) {
-                JOptionPane.showMessageDialog(this, "Failed to update appointment status.");
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not mark this appointment as Completed. Please try again.",
+                    "Update Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
                 return;
             }
             refreshAllViews();
         });
 
-        JButton cancelled = actionButton("✕", new Color(231, 86, 86));
-        cancelled.setToolTipText("Mark as cancelled");
-        cancelled.addActionListener(e -> {
+        JButton cancelButton = softActionButton("Cancel", new Color(252, 236, 236), new Color(224, 93, 93));
+        cancelButton.setPreferredSize(new Dimension(96, 30));
+        cancelButton.setMinimumSize(new Dimension(96, 30));
+        cancelButton.setMaximumSize(new Dimension(96, 30));
+        cancelButton.addActionListener(e -> {
+            if (!confirmAppointmentStatusUpdate()) {
+                return;
+            }
             String reason = JOptionPane.showInputDialog(this, "Cancel reason (optional):", "Cancelled by admin");
             if (reason == null) {
                 return;
@@ -2699,16 +3535,32 @@ public class AdminDashboardFrame extends JFrame {
                 "cancelled",
                 reason.isBlank() ? "Cancelled by admin" : reason.trim()
             )) {
-                JOptionPane.showMessageDialog(this, "Failed to update appointment status.");
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not mark this appointment as Cancelled. Please try again.",
+                    "Update Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
                 return;
             }
             refreshAllViews();
         });
 
-        actions.add(completed);
-        actions.add(Box.createHorizontalStrut(8));
-        actions.add(cancelled);
-        row.add(rowCell(actions), BorderLayout.EAST);
+        actions.setPreferredSize(new Dimension(100, 70));
+        actions.setMinimumSize(new Dimension(100, 70));
+        actions.add(confirmButton);
+        actions.add(Box.createVerticalStrut(8));
+        actions.add(cancelButton);
+        addAppointmentTableGridCell(row, actions, 7, GridBagConstraints.NORTHEAST);
+
+        int wrappedHeight = Math.max(reasonCell.getPreferredSize().height, allergiesCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, notesCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         return row;
     }
 
@@ -2716,7 +3568,9 @@ public class AdminDashboardFrame extends JFrame {
         RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
         row.setLayout(new BorderLayout(12, 0));
         row.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 74));
+        row.setMinimumSize(new Dimension(10, DASHBOARD_TODAY_ROW_HEIGHT));
+        row.setPreferredSize(new Dimension(1000, DASHBOARD_TODAY_ROW_HEIGHT));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, DASHBOARD_TODAY_ROW_HEIGHT));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel time = new JLabel(record.timeText);
@@ -2767,8 +3621,16 @@ public class AdminDashboardFrame extends JFrame {
 
         JButton completed = actionButton("✓", new Color(84, 195, 102));
         completed.addActionListener(e -> {
+            if (!confirmAppointmentStatusUpdate()) {
+                return;
+            }
             if (!updateAppointmentStatusInDatabase(record.id, "completed", "-")) {
-                JOptionPane.showMessageDialog(this, "Failed to update appointment status.");
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not mark this appointment as Completed. Please try again.",
+                    "Update Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
                 return;
             }
             refreshAllViews();
@@ -2776,6 +3638,9 @@ public class AdminDashboardFrame extends JFrame {
 
         JButton cancelled = actionButton("✕", new Color(231, 86, 86));
         cancelled.addActionListener(e -> {
+            if (!confirmAppointmentStatusUpdate()) {
+                return;
+            }
             String reasonText = JOptionPane.showInputDialog(this, "Cancel reason (optional):", "Cancelled by admin");
             if (reasonText == null) {
                 return;
@@ -2785,7 +3650,12 @@ public class AdminDashboardFrame extends JFrame {
                 "cancelled",
                 reasonText.isBlank() ? "Cancelled by admin" : reasonText.trim()
             )) {
-                JOptionPane.showMessageDialog(this, "Failed to update appointment status.");
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not mark this appointment as Cancelled. Please try again.",
+                    "Update Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
                 return;
             }
             refreshAllViews();
@@ -2803,72 +3673,192 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private JPanel patientRow(PatientRecord record) {
-        RoundedPanel row = tableRowCard(TABLE_ROW_HEIGHT);
-        row.setLayout(new BorderLayout(12, 0));
+        RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
+        row.setLayout(new GridBagLayout());
+        row.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
+                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+            )
+        );
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
+        row.setMaximumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, Integer.MAX_VALUE));
 
-        JLabel patientIdLabel = new JLabel(truncateText(safeText(record.patientId, "—"), 12));
-        patientIdLabel.setFont(new Font("Monospaced", Font.BOLD, 20));
-        patientIdLabel.setForeground(new Color(63, 101, 228));
-        patientIdLabel.setPreferredSize(new Dimension(122, 40));
-        row.add(rowCell(patientIdLabel), BorderLayout.WEST);
+        String[] nameParts = splitPatientNameParts(record.name);
 
-        JPanel details = new JPanel();
-        details.setOpaque(false);
-        details.setLayout(new BoxLayout(details, BoxLayout.Y_AXIS));
+        JPanel patientIdCell = chipLabel(truncateText(safeText(record.patientId, "—"), 16));
+        addPatientTableGridCell(row, patientIdCell, 0, GridBagConstraints.WEST);
 
-        JLabel nameLabel = new JLabel(truncateText(safeText(record.name, "(No patient)"), 34));
-        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        nameLabel.setForeground(new Color(33, 46, 71));
-        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel firstNameCell = appointmentWrappedTextCell(safeText(nameParts[0], "-"), patientColumnWidth(1) - 10);
+        addPatientTableGridCell(row, firstNameCell, 1, GridBagConstraints.NORTHWEST);
 
-        JLabel contactLabel = new JLabel(truncateText("Contact: " + safeText(record.contactNumber, "-"), 44));
-        contactLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        contactLabel.setForeground(new Color(109, 124, 151));
-        contactLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel middleNameCell = appointmentWrappedTextCell(safeText(nameParts[1], "-"), patientColumnWidth(2) - 10);
+        addPatientTableGridCell(row, middleNameCell, 2, GridBagConstraints.NORTHWEST);
 
-        details.add(nameLabel);
-        details.add(Box.createVerticalStrut(4));
-        details.add(contactLabel);
-        row.add(details, BorderLayout.CENTER);
+        JPanel lastNameCell = appointmentWrappedTextCell(safeText(nameParts[2], "-"), patientColumnWidth(3) - 10);
+        addPatientTableGridCell(row, lastNameCell, 3, GridBagConstraints.NORTHWEST);
+
+        JPanel contactCell = appointmentWrappedTextCell(safeText(record.contactNumber, "-"), patientColumnWidth(4) - 10);
+        addPatientTableGridCell(row, contactCell, 4, GridBagConstraints.NORTHWEST);
+
+        JPanel emergencyContactCell = appointmentWrappedTextCell(
+            safeText(record.emergencyContactNumber, "-"),
+            patientColumnWidth(5) - 10
+        );
+        addPatientTableGridCell(row, emergencyContactCell, 5, GridBagConstraints.NORTHWEST);
 
         JPanel actions = new JPanel();
         actions.setOpaque(false);
-        actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
+        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
         JButton edit = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
+        edit.setPreferredSize(new Dimension(88, 32));
+        edit.setMinimumSize(new Dimension(88, 32));
+        edit.setMaximumSize(new Dimension(88, 32));
+        edit.setAlignmentX(Component.CENTER_ALIGNMENT);
         edit.addActionListener(e -> {
-            JTextField nameField = new JTextField(record.name);
+            String[] editNameParts = splitPatientNameParts(record.name);
+            JTextField firstNameField = new JTextField(editNameParts[0]);
+            JTextField middleNameField = new JTextField(editNameParts[1]);
+            JTextField lastNameField = new JTextField(editNameParts[2]);
             JTextField contactField = new JTextField(record.contactNumber);
-            styleInputField(nameField);
+            JTextField emergencyContactField = new JTextField(record.emergencyContactNumber);
+            styleInputField(firstNameField);
+            styleInputField(middleNameField);
+            styleInputField(lastNameField);
             styleInputField(contactField);
+            styleInputField(emergencyContactField);
+            applyLettersOnlyInputRestriction(firstNameField);
+            applyLettersOnlyInputRestriction(middleNameField);
+            applyLettersOnlyInputRestriction(lastNameField);
+            applyDigitsOnlyInputRestriction(contactField, 11);
+            applyDigitsOnlyInputRestriction(emergencyContactField, 11);
             JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-            form.add(new JLabel("Patient Name"));
-            form.add(nameField);
+            form.add(new JLabel("First Name"));
+            form.add(firstNameField);
+            form.add(new JLabel("Middle Name"));
+            form.add(middleNameField);
+            form.add(new JLabel("Last Name"));
+            form.add(lastNameField);
             form.add(new JLabel("Contact Number"));
             form.add(contactField);
-            int result = JOptionPane.showConfirmDialog(
-                this,
-                form,
-                "Edit Patient",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE
-            );
-            if (result != JOptionPane.OK_OPTION) {
+            form.add(new JLabel("Emergency Contact Number"));
+            form.add(emergencyContactField);
+            while (true) {
+                int result = JOptionPane.showConfirmDialog(
+                    this,
+                    form,
+                    "Edit Patient",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE
+                );
+                if (result != JOptionPane.OK_OPTION) {
+                    return;
+                }
+
+                resetFieldValidationState(firstNameField, middleNameField, lastNameField, contactField, emergencyContactField);
+
+                String firstError = validateRequiredPatientNamePart("First Name", firstNameField.getText());
+                if (firstError != null) {
+                    highlightInvalidField(firstNameField);
+                    JOptionPane.showMessageDialog(this, firstError, "Invalid First Name", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String middleError = validateOptionalPatientNamePart("Middle Name", middleNameField.getText());
+                if (middleError != null) {
+                    highlightInvalidField(middleNameField);
+                    JOptionPane.showMessageDialog(this, middleError, "Invalid Middle Name", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String lastError = validateRequiredPatientNamePart("Last Name", lastNameField.getText());
+                if (lastError != null) {
+                    highlightInvalidField(lastNameField);
+                    JOptionPane.showMessageDialog(this, lastError, "Invalid Last Name", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String contactError = validatePhoneNumber("Contact Number", contactField.getText());
+                if (contactError != null) {
+                    highlightInvalidField(contactField);
+                    JOptionPane.showMessageDialog(this, contactError, "Invalid Contact Number", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String emergencyContactError = validatePhoneNumber("Emergency Contact Number", emergencyContactField.getText());
+                if (emergencyContactError != null) {
+                    highlightInvalidField(emergencyContactField);
+                    JOptionPane.showMessageDialog(this, emergencyContactError, "Invalid Emergency Contact Number", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String normalizedContact = normalizePhoneNumber(contactField.getText());
+                String normalizedEmergency = normalizePhoneNumber(emergencyContactField.getText());
+                if (normalizedContact.equals(normalizedEmergency)) {
+                    highlightInvalidField(contactField);
+                    highlightInvalidField(emergencyContactField);
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Contact Number and Emergency Contact Number must be different.",
+                        "Duplicate Contact Number",
+                        JOptionPane.WARNING_MESSAGE
+                    );
+                    continue;
+                }
+
+                String duplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, record.id);
+                if (duplicateError != null) {
+                    highlightInvalidField(contactField);
+                    highlightInvalidField(emergencyContactField);
+                    JOptionPane.showMessageDialog(this, duplicateError, "Duplicate Contact Number", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String fullName = buildPatientFullName(
+                    firstNameField.getText(),
+                    middleNameField.getText(),
+                    lastNameField.getText()
+                );
+                if (!updatePatientInDatabase(record, fullName, normalizedContact, normalizedEmergency)) {
+                    String postUpdateDuplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, record.id);
+                    if (postUpdateDuplicateError != null
+                        && (postUpdateDuplicateError.startsWith("Contact Number already exists")
+                            || postUpdateDuplicateError.startsWith("Emergency Contact Number already exists"))) {
+                        highlightInvalidField(contactField);
+                        highlightInvalidField(emergencyContactField);
+                        JOptionPane.showMessageDialog(this, postUpdateDuplicateError, "Duplicate Contact Number", JOptionPane.WARNING_MESSAGE);
+                        continue;
+                    }
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Could not update patient record. Please check your database connection and try again.",
+                        "Update Failed",
+                        JOptionPane.ERROR_MESSAGE
+                    );
+                    continue;
+                }
+                refreshAllViews();
                 return;
             }
-            if (nameField.getText().isBlank() || contactField.getText().isBlank()) {
-                JOptionPane.showMessageDialog(this, "Please fill all fields.");
-                return;
-            }
-            if (!updatePatientInDatabase(record, nameField.getText().trim(), contactField.getText().trim())) {
-                JOptionPane.showMessageDialog(this, "Failed to update patient.");
-                return;
-            }
-            refreshAllViews();
         });
 
+        actions.setPreferredSize(new Dimension(96, 36));
+        actions.setMinimumSize(new Dimension(96, 36));
+        actions.setMaximumSize(new Dimension(96, 36));
         actions.add(edit);
-        row.add(rowCell(actions), BorderLayout.EAST);
+        addPatientTableGridCell(row, actions, 6, GridBagConstraints.CENTER);
+
+        int wrappedHeight = Math.max(firstNameCell.getPreferredSize().height, middleNameCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, lastNameCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, contactCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, emergencyContactCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        row.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setPreferredSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setMaximumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         return row;
     }
 
@@ -2906,8 +3896,8 @@ public class AdminDashboardFrame extends JFrame {
         }
 
         if (logged.isEmpty()) {
-            logRows.add(emptyStatePanel("No log records yet.", "Completed and cancelled appointments will appear here."));
-            updateRowsPanelPreferredHeight(logRows, 1);
+            logRows.add(emptyStatePanel("No archived records yet.", "Completed and cancelled appointments will appear here."));
+            updateRowsPanelHeightFromChildren(logRows);
         } else {
             int i = 0;
             for (AppointmentRecord record : logged) {
@@ -2917,7 +3907,7 @@ public class AdminDashboardFrame extends JFrame {
                 logRows.add(logRow(record));
                 i++;
             }
-            updateRowsPanelPreferredHeight(logRows, logged.size());
+            updateRowsPanelHeightFromChildren(logRows);
         }
 
         logRows.revalidate();
@@ -2925,72 +3915,107 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private JPanel logRow(AppointmentRecord record) {
-        RoundedPanel row = tableRowCard(TABLE_ROW_HEIGHT);
-        row.setLayout(new BorderLayout(12, 0));
+        RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
+        row.setLayout(new GridBagLayout());
+        row.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
+                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+            )
+        );
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
+        row.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, Integer.MAX_VALUE));
 
-        JPanel left = new JPanel();
-        left.setOpaque(false);
-        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        left.setPreferredSize(new Dimension(118, 44));
+        String formattedDate = record.appointmentDate == null
+            ? safeText(record.dateText, "-")
+            : record.appointmentDate.format(APPOINTMENT_TABLE_DATE_FORMAT);
+        JLabel dateCell = rowLabelLimited(formattedDate, 12);
+        dateCell.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        addAppointmentTableGridCell(row, dateCell, 0, GridBagConstraints.NORTHWEST);
 
-        JLabel timeLabel = new JLabel(safeText(record.timeText, "--:--"));
-        timeLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        timeLabel.setForeground(new Color(63, 101, 228));
-        timeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel timeCell = rowLabel(safeText(record.timeText, "--:--"));
+        timeCell.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        timeCell.setForeground(new Color(63, 101, 228));
+        addAppointmentTableGridCell(row, timeCell, 1, GridBagConstraints.NORTHWEST);
 
-        JLabel dateLabel = new JLabel(truncateText(safeText(record.dateText, "-"), 16));
-        dateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        dateLabel.setForeground(new Color(109, 124, 151));
-        dateLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        left.add(timeLabel);
-        left.add(Box.createVerticalStrut(2));
-        left.add(dateLabel);
-        row.add(rowCell(left), BorderLayout.WEST);
-
-        JPanel details = new JPanel();
-        details.setOpaque(false);
-        details.setLayout(new BoxLayout(details, BoxLayout.Y_AXIS));
-
-        JLabel patientLabel = new JLabel(truncateText(safeText(record.patientName, "(No patient)"), 30));
-        patientLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        patientLabel.setForeground(new Color(33, 46, 71));
-        patientLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel patientCell = rowLabelLimited(safeText(record.patientName, "(No patient)"), 26);
+        patientCell.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        addAppointmentTableGridCell(row, patientCell, 2, GridBagConstraints.NORTHWEST);
 
         String reasonText = safeText(record.reason, "-");
         if ("cancelled".equals(record.status)) {
             String cancel = safeText(record.cancelReason, "");
             if (!cancel.isBlank() && !"-".equals(cancel)) {
-                reasonText = reasonText + "  •  Cancel: " + cancel;
+                reasonText = reasonText + "  |  Cancel: " + cancel;
             }
         }
-        JLabel subtitleLabel = new JLabel(truncateText(reasonText, 62));
-        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        subtitleLabel.setForeground(new Color(109, 124, 151));
-        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel reasonCell = appointmentWrappedTextCell(reasonText, appointmentColumnWidth(3) - 10);
+        addAppointmentTableGridCell(row, reasonCell, 3, GridBagConstraints.NORTHWEST);
 
-        details.add(patientLabel);
-        details.add(Box.createVerticalStrut(4));
-        details.add(subtitleLabel);
-        row.add(details, BorderLayout.CENTER);
+        JPanel allergiesCell = appointmentWrappedTextCell(safeText(record.allergies, "N/A"), appointmentColumnWidth(4) - 10);
+        addAppointmentTableGridCell(row, allergiesCell, 4, GridBagConstraints.NORTHWEST);
+
+        JPanel notesCell = appointmentWrappedTextCell(safeText(record.notes, "N/A"), appointmentColumnWidth(5) - 10);
+        addAppointmentTableGridCell(row, notesCell, 5, GridBagConstraints.NORTHWEST);
+
+        JPanel statusCell = statusBadge(record.status);
+        addAppointmentTableGridCell(row, statusCell, 6, GridBagConstraints.CENTER);
 
         JPanel actions = new JPanel();
         actions.setOpaque(false);
-        actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
-        actions.add(statusBadge(record.status));
+        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
+
         if ("cancelled".equals(record.status)) {
-            actions.add(Box.createHorizontalStrut(10));
             JButton restore = softActionButton("Restore", new Color(234, 240, 252), new Color(44, 58, 86));
+            restore.setPreferredSize(new Dimension(96, 32));
+            restore.setMinimumSize(new Dimension(96, 32));
+            restore.setMaximumSize(new Dimension(96, 32));
+            restore.setAlignmentX(Component.CENTER_ALIGNMENT);
             restore.addActionListener(e -> {
+                int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "Are you sure you want to restore this appointment?",
+                    "Confirm Restore",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE
+                );
+                if (confirm != JOptionPane.YES_OPTION) {
+                    return;
+                }
                 if (!updateAppointmentStatusInDatabase(record.id, "pending", "-")) {
-                    JOptionPane.showMessageDialog(this, "Failed to restore appointment.");
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Could not restore this cancelled appointment right now. Please try again.",
+                        "Restore Failed",
+                        JOptionPane.ERROR_MESSAGE
+                    );
                     return;
                 }
                 refreshAllViews();
             });
             actions.add(restore);
+        } else {
+            JLabel noAction = new JLabel("-");
+            noAction.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            noAction.setForeground(new Color(132, 145, 171));
+            noAction.setAlignmentX(Component.CENTER_ALIGNMENT);
+            actions.add(noAction);
         }
-        row.add(rowCell(actions), BorderLayout.EAST);
+
+        actions.setPreferredSize(new Dimension(100, 36));
+        actions.setMinimumSize(new Dimension(100, 36));
+        actions.setMaximumSize(new Dimension(100, 36));
+        addAppointmentTableGridCell(row, actions, 7, GridBagConstraints.CENTER);
+
+        int wrappedHeight = Math.max(reasonCell.getPreferredSize().height, allergiesCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, notesCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         return row;
     }
 
@@ -3105,25 +4130,67 @@ public class AdminDashboardFrame extends JFrame {
             form.add(nameField);
             form.add(new JLabel("Username"));
             form.add(usernameField);
-            int result = JOptionPane.showConfirmDialog(
-                this,
-                form,
-                "Edit Receptionist",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE
-            );
-            if (result != JOptionPane.OK_OPTION) {
+            while (true) {
+                int result = JOptionPane.showConfirmDialog(
+                    this,
+                    form,
+                    "Edit Receptionist",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE
+                );
+                if (result != JOptionPane.OK_OPTION) {
+                    return;
+                }
+
+                resetFieldValidationState(nameField, usernameField);
+
+                String nameError = validateReceptionistName(nameField.getText().trim());
+                if (nameError != null) {
+                    highlightInvalidField(nameField);
+                    JOptionPane.showMessageDialog(this, nameError, "Invalid Name", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String usernameError = validateReceptionistUsername(usernameField.getText().trim());
+                if (usernameError != null) {
+                    highlightInvalidField(usernameField);
+                    JOptionPane.showMessageDialog(this, usernameError, "Invalid Username", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                String duplicateError = validateReceptionistUsernameUniqueness(
+                    usernameField.getText().trim(),
+                    record.accountPk > 0 ? record.accountPk : null,
+                    record.username
+                );
+                if (duplicateError != null) {
+                    highlightInvalidField(usernameField);
+                    JOptionPane.showMessageDialog(this, duplicateError, "Duplicate Username", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                if (!updateReceptionistInDatabase(record, nameField.getText().trim(), usernameField.getText().trim())) {
+                    String duplicateAfterUpdateError = validateReceptionistUsernameUniqueness(
+                        usernameField.getText().trim(),
+                        record.accountPk > 0 ? record.accountPk : null,
+                        record.username
+                    );
+                    if (duplicateAfterUpdateError != null && duplicateAfterUpdateError.startsWith("Username already exists")) {
+                        highlightInvalidField(usernameField);
+                        JOptionPane.showMessageDialog(this, duplicateAfterUpdateError, "Duplicate Username", JOptionPane.WARNING_MESSAGE);
+                        continue;
+                    }
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Could not update receptionist account. Please check your database connection and try again.",
+                        "Update Failed",
+                        JOptionPane.ERROR_MESSAGE
+                    );
+                    continue;
+                }
+                refreshAllViews();
                 return;
             }
-            if (nameField.getText().isBlank() || usernameField.getText().isBlank()) {
-                JOptionPane.showMessageDialog(this, "Please fill all fields.");
-                return;
-            }
-            if (!updateReceptionistInDatabase(record, nameField.getText().trim(), usernameField.getText().trim())) {
-                JOptionPane.showMessageDialog(this, "Failed to update receptionist.");
-                return;
-            }
-            refreshAllViews();
         });
 
         JButton statusAction;
@@ -3131,7 +4198,12 @@ public class AdminDashboardFrame extends JFrame {
             statusAction = softActionButton("Deactivate", new Color(252, 236, 236), new Color(224, 93, 93));
             statusAction.addActionListener(e -> {
                 if (!updateReceptionistStatusInDatabase(record, "deactivated")) {
-                    JOptionPane.showMessageDialog(this, "Failed to update receptionist status.");
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Could not deactivate this receptionist right now. Please try again.",
+                        "Update Failed",
+                        JOptionPane.ERROR_MESSAGE
+                    );
                     return;
                 }
                 refreshAllViews();
@@ -3140,7 +4212,12 @@ public class AdminDashboardFrame extends JFrame {
             statusAction = softActionButton("Activate", new Color(231, 246, 236), new Color(73, 190, 107));
             statusAction.addActionListener(e -> {
                 if (!updateReceptionistStatusInDatabase(record, "active")) {
-                    JOptionPane.showMessageDialog(this, "Failed to update receptionist status.");
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Could not activate this receptionist right now. Please try again.",
+                        "Update Failed",
+                        JOptionPane.ERROR_MESSAGE
+                    );
                     return;
                 }
                 refreshAllViews();
@@ -3178,20 +4255,377 @@ public class AdminDashboardFrame extends JFrame {
         return count;
     }
 
+    private String[] splitPatientNameParts(String fullName) {
+        String clean = safeText(fullName, "").trim();
+        if (clean.isEmpty()) {
+            return new String[] {"", "", ""};
+        }
+
+        String[] parts = clean.split("\\s+");
+        String firstName = parts[0];
+        String middleName = "";
+        String lastName = "";
+
+        if (parts.length == 2) {
+            lastName = parts[1];
+        } else if (parts.length >= 3) {
+            middleName = parts[1];
+            StringBuilder lastNameBuilder = new StringBuilder(parts[2]);
+            for (int i = 3; i < parts.length; i++) {
+                lastNameBuilder.append(" ").append(parts[i]);
+            }
+            lastName = lastNameBuilder.toString();
+        }
+
+        return new String[] {firstName, middleName, lastName};
+    }
+
+    private String buildPatientFullName(String firstName, String middleName, String lastName) {
+        String first = firstName == null ? "" : firstName.trim();
+        String middle = middleName == null ? "" : middleName.trim();
+        String last = lastName == null ? "" : lastName.trim();
+        if (middle.isBlank()) {
+            return (first + " " + last).trim();
+        }
+        return (first + " " + middle + " " + last).trim();
+    }
+
+    private String validateRequiredPatientNamePart(String fieldLabel, String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isBlank()) {
+            return fieldLabel + " is required.";
+        }
+        if (!trimmed.matches("[A-Za-z]+")) {
+            return fieldLabel + " must contain letters only. Numbers and special characters are not allowed.";
+        }
+        return null;
+    }
+
+    private String validateOptionalPatientNamePart(String fieldLabel, String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        if (!trimmed.matches("[A-Za-z]+")) {
+            return fieldLabel + " must contain letters only when provided. Numbers and special characters are not allowed.";
+        }
+        return null;
+    }
+
+    private String validateReceptionistName(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isBlank()) {
+            return "Full Name is required.";
+        }
+        if (trimmed.length() < 2) {
+            return "Full Name must be at least 2 characters.";
+        }
+        if (!trimmed.matches("[A-Za-z][A-Za-z .'-]*")) {
+            return "Full Name may contain letters, spaces, apostrophes, periods, and hyphens only.";
+        }
+        return null;
+    }
+
+    private String validateReceptionistUsername(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isBlank()) {
+            return "Username is required.";
+        }
+        if (trimmed.length() < 4) {
+            return "Username must be at least 4 characters.";
+        }
+        if (!trimmed.matches("[A-Za-z0-9_.]+")) {
+            return "Username can only contain letters, numbers, underscore (_), and period (.)";
+        }
+        return null;
+    }
+
+    private String validateReceptionistPassword(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isBlank()) {
+            return "Password is required.";
+        }
+        if (trimmed.length() < 6) {
+            return "Password must be at least 6 characters.";
+        }
+        return null;
+    }
+
+    private String validateReceptionistUsernameUniqueness(
+        String username,
+        Integer excludeAccountPk,
+        String excludeUsername
+    ) {
+        String normalized = username == null ? "" : username.trim();
+        if (normalized.isBlank()) {
+            return "Username is required.";
+        }
+
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return "Unable to validate username because the database is not connected.";
+            }
+
+            AccountMeta meta = resolveAccountMeta(con);
+            if (!meta.tableExists || !meta.columns.contains("username")) {
+                return "Account table is not available. Please verify your database setup.";
+            }
+
+            StringBuilder sql = new StringBuilder("SELECT 1 FROM account WHERE LOWER(username)=LOWER(?)");
+            boolean useIdExclusion = excludeAccountPk != null && meta.idColumn != null;
+            if (useIdExclusion) {
+                sql.append(" AND ").append(meta.idColumn).append("<>?");
+            } else if (excludeUsername != null && !excludeUsername.isBlank()) {
+                sql.append(" AND LOWER(username)<>LOWER(?)");
+            }
+            sql.append(" LIMIT 1");
+
+            try (PreparedStatement pst = con.prepareStatement(sql.toString())) {
+                pst.setString(1, normalized);
+                if (useIdExclusion) {
+                    pst.setInt(2, excludeAccountPk);
+                } else if (excludeUsername != null && !excludeUsername.isBlank()) {
+                    pst.setString(2, excludeUsername.trim());
+                }
+
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (rs.next()) {
+                        return "Username already exists. Please choose a different username.";
+                    }
+                }
+            }
+
+            return null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Unable to validate username right now. Please try again.";
+        }
+    }
+
+    private String normalizePhoneNumber(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String validateAppointmentDateInput(String value) {
+        String raw = value == null ? "" : value.trim();
+        if (raw.isBlank()) {
+            return "Appointment date is required.";
+        }
+
+        LocalDate parsedDate;
+        try {
+            parsedDate = LocalDate.parse(raw, APPOINTMENT_FORM_DATE_FORMAT);
+        } catch (Exception ex) {
+            return "Invalid date format. Please use MM/DD/YYYY (example: 04/28/2026).";
+        }
+
+        if (parsedDate.isBefore(LocalDate.now())) {
+            return "Past dates are not allowed. Please select today or a future date.";
+        }
+
+        DayOfWeek day = parsedDate.getDayOfWeek();
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+            return "Weekend dates are not allowed. Please select a Monday to Friday schedule.";
+        }
+
+        return null;
+    }
+
+    private String[] buildAppointmentTimeOptions() {
+        List<String> options = new ArrayList<>();
+        LocalTime current = LocalTime.of(9, 0);
+        LocalTime closing = LocalTime.of(17, 0);
+        while (!current.isAfter(closing)) {
+            options.add(current.format(APPOINTMENT_FORM_TIME_FORMAT));
+            current = current.plusMinutes(30);
+        }
+        return options.toArray(new String[0]);
+    }
+
+    private LocalTime parseAppointmentFormTime(String value) {
+        String raw = value == null ? "" : value.trim();
+        return LocalTime.parse(raw, APPOINTMENT_FORM_TIME_FORMAT);
+    }
+
+    private String validateAppointmentTimeInput(String value) {
+        String raw = value == null ? "" : value.trim();
+        if (raw.isBlank()) {
+            return "Appointment time is required.";
+        }
+
+        LocalTime parsedTime;
+        try {
+            parsedTime = parseAppointmentFormTime(raw);
+        } catch (Exception ex) {
+            return "Invalid time format. Use 12-hour format with AM/PM only (example: 9:00 AM). Military time is not allowed.";
+        }
+
+        LocalTime openingTime = LocalTime.of(9, 0);
+        LocalTime closingTime = LocalTime.of(17, 0);
+        if (parsedTime.isBefore(openingTime)) {
+            return "Appointments before 9:00 AM are not allowed.";
+        }
+        if (parsedTime.isAfter(closingTime)) {
+            return "Appointments after 5:00 PM are not allowed.";
+        }
+
+        return null;
+    }
+
+    private String validateAppointmentSlotAvailability(
+        LocalDate appointmentDate,
+        LocalTime appointmentTime,
+        Integer excludeAppointmentId
+    ) {
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return "Unable to validate schedule because the database is not connected.";
+            }
+            ensureClinicTables(con);
+            boolean hasOverlap = hasOverlappingAppointment(
+                con,
+                appointmentDate,
+                appointmentTime,
+                APPOINTMENT_DURATION_MINUTES,
+                excludeAppointmentId
+            );
+            if (hasOverlap) {
+                return TIME_SLOT_BOOKED_MESSAGE;
+            }
+            return null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Unable to validate appointment schedule right now. Please try again.";
+        }
+    }
+
+    private boolean hasOverlappingAppointment(
+        Connection con,
+        LocalDate appointmentDate,
+        LocalTime appointmentStart,
+        int durationMinutes,
+        Integer excludeAppointmentId
+    ) throws SQLException {
+        String sql = "SELECT id, appointment_time, status FROM appointments WHERE appointment_date=?";
+        LocalTime appointmentEnd = appointmentStart.plusMinutes(durationMinutes);
+
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.setDate(1, Date.valueOf(appointmentDate));
+            try (ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    int existingId = rs.getInt("id");
+                    if (excludeAppointmentId != null && existingId == excludeAppointmentId) {
+                        continue;
+                    }
+                    String status = normalizeAppointmentStatus(rs.getString("status"));
+                    if (!"pending".equals(status)) {
+                        continue;
+                    }
+
+                    Time existingRawTime = rs.getTime("appointment_time");
+                    if (existingRawTime == null) {
+                        continue;
+                    }
+
+                    LocalTime existingStart = existingRawTime.toLocalTime().withSecond(0).withNano(0);
+                    LocalTime existingEnd = existingStart.plusMinutes(durationMinutes);
+                    boolean overlaps = appointmentStart.isBefore(existingEnd) && existingStart.isBefore(appointmentEnd);
+                    if (overlaps) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private String validatePhoneNumber(String fieldLabel, String value) {
+        String normalized = normalizePhoneNumber(value);
+        if (normalized.isBlank()) {
+            return fieldLabel + " is required.";
+        }
+        if (!normalized.matches("\\d+")) {
+            return fieldLabel + " must contain digits only. Letters and symbols are not allowed.";
+        }
+        if (normalized.length() != 11) {
+            return fieldLabel + " must be exactly 11 digits.";
+        }
+        return null;
+    }
+
+    private String validatePatientContactUniqueness(
+        String contactNumber,
+        String emergencyContactNumber,
+        Integer excludePatientId
+    ) {
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return "Unable to validate contact numbers because the database is not connected.";
+            }
+            ensureClinicTables(con);
+
+            if (patientContactNumberExists(con, contactNumber, excludePatientId)) {
+                return "Contact Number already exists in the database. Please use a different number.";
+            }
+            if (patientContactNumberExists(con, emergencyContactNumber, excludePatientId)) {
+                return "Emergency Contact Number already exists in the database. Please use a different number.";
+            }
+            return null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Unable to validate contact number uniqueness right now. Please try again.";
+        }
+    }
+
     private boolean matchesAppointmentSearch(AppointmentRecord record) {
         if (appointmentSearchQuery.isBlank()) {
             return true;
         }
-        String haystack = (record.patientName + " " + record.reason + " " + record.dateText + " " + record.timeText)
+        String haystack = (record.patientName + " " + record.reason + " " + record.allergies + " " + record.notes + " " + record.dateText + " " + record.timeText)
             .toLowerCase(Locale.ENGLISH);
         return haystack.contains(appointmentSearchQuery);
+    }
+
+    private boolean isSameCalendarDate(AppointmentRecord record, LocalDate selectedDate) {
+        if (record == null || selectedDate == null) {
+            return false;
+        }
+        LocalDate recordDate = resolveAppointmentRecordDate(record);
+        return selectedDate.equals(recordDate);
+    }
+
+    private LocalDate resolveAppointmentRecordDate(AppointmentRecord record) {
+        if (record == null) {
+            return null;
+        }
+        if (record.appointmentDate != null) {
+            return record.appointmentDate;
+        }
+        String raw = safeText(record.dateText, "").trim();
+        if (raw.isBlank()) {
+            return null;
+        }
+        DateTimeFormatter[] fallbackFormats = new DateTimeFormatter[]{
+            APPOINTMENT_FORM_DATE_FORMAT,
+            CALENDAR_INPUT_FORMAT,
+            DATE_LABEL_FORMAT
+        };
+        for (DateTimeFormatter formatter : fallbackFormats) {
+            try {
+                return LocalDate.parse(raw, formatter);
+            } catch (Exception ignored) {
+                // Try the next formatter.
+            }
+        }
+        return null;
     }
 
     private boolean matchesPatientSearch(PatientRecord record) {
         if (patientSearchQuery.isBlank()) {
             return true;
         }
-        String haystack = (record.name + " " + record.contactNumber + " " + record.patientId)
+        String haystack = (record.name + " " + record.contactNumber + " " + record.emergencyContactNumber + " " + record.patientId)
             .toLowerCase(Locale.ENGLISH);
         return haystack.contains(patientSearchQuery);
     }
@@ -3200,7 +4634,7 @@ public class AdminDashboardFrame extends JFrame {
         if (logSearchQuery.isBlank()) {
             return true;
         }
-        String haystack = (record.patientName + " " + record.reason + " " + record.cancelReason + " " + record.dateText + " " + record.timeText)
+        String haystack = (record.patientName + " " + record.reason + " " + record.allergies + " " + record.notes + " " + record.cancelReason + " " + record.dateText + " " + record.timeText)
             .toLowerCase(Locale.ENGLISH);
         return haystack.contains(logSearchQuery);
     }
@@ -3256,6 +4690,162 @@ public class AdminDashboardFrame extends JFrame {
         header.add(right, BorderLayout.EAST);
 
         return header;
+    }
+
+    private JPanel appointmentTableHeaderRow() {
+        RoundedPanel header = new RoundedPanel(12, new Color(243, 247, 255));
+        header.setLayout(new GridBagLayout());
+        header.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
+                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+            )
+        );
+        header.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 52));
+        header.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 52));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+
+        addAppointmentTableGridCell(header, appointmentHeaderLabel("Date"), 0, GridBagConstraints.WEST);
+        addAppointmentTableGridCell(header, appointmentHeaderLabel("Time"), 1, GridBagConstraints.WEST);
+        addAppointmentTableGridCell(header, appointmentHeaderLabel("Patient Name"), 2, GridBagConstraints.WEST);
+        addAppointmentTableGridCell(header, appointmentHeaderLabel("Reason"), 3, GridBagConstraints.WEST);
+        addAppointmentTableGridCell(header, appointmentHeaderLabel("Allergies"), 4, GridBagConstraints.WEST);
+        addAppointmentTableGridCell(header, appointmentHeaderLabel("Notes"), 5, GridBagConstraints.WEST);
+        JLabel statusHeader = appointmentHeaderLabel("Status");
+        statusHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addAppointmentTableGridCell(header, statusHeader, 6, GridBagConstraints.CENTER);
+        JLabel actionsHeader = appointmentHeaderLabel("Actions");
+        actionsHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addAppointmentTableGridCell(header, actionsHeader, 7, GridBagConstraints.CENTER);
+        return header;
+    }
+
+    private JLabel appointmentHeaderLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        label.setForeground(new Color(73, 87, 112));
+        return label;
+    }
+
+    private void addAppointmentTableGridCell(JPanel row, Component content, int columnIndex, int anchor) {
+        int colWidth = appointmentColumnWidth(columnIndex);
+        Dimension contentPref = content.getPreferredSize();
+        int prefHeight = Math.max(24, contentPref == null ? 24 : contentPref.height);
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setOpaque(false);
+        wrapper.setMinimumSize(new Dimension(colWidth, prefHeight));
+        wrapper.setPreferredSize(new Dimension(colWidth, prefHeight));
+        wrapper.setMaximumSize(new Dimension(colWidth, Integer.MAX_VALUE));
+        if (anchor == GridBagConstraints.CENTER) {
+            wrapper.add(content, BorderLayout.CENTER);
+        } else if (anchor == GridBagConstraints.EAST || anchor == GridBagConstraints.NORTHEAST || anchor == GridBagConstraints.SOUTHEAST) {
+            wrapper.add(content, BorderLayout.EAST);
+        } else {
+            wrapper.add(content, BorderLayout.WEST);
+        }
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = columnIndex;
+        gbc.gridy = 0;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = anchor;
+        gbc.insets = new java.awt.Insets(0, 8, 0, 8);
+        row.add(wrapper, gbc);
+    }
+
+    private int appointmentColumnWidth(int columnIndex) {
+        if (columnIndex < 0 || columnIndex >= APPOINTMENT_TABLE_COLUMN_WIDTHS.length) {
+            return 120;
+        }
+        return APPOINTMENT_TABLE_COLUMN_WIDTHS[columnIndex];
+    }
+
+    private JPanel patientTableHeaderRow() {
+        RoundedPanel header = new RoundedPanel(12, new Color(243, 247, 255));
+        header.setLayout(new GridBagLayout());
+        header.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
+                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+            )
+        );
+        header.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 52));
+        header.setPreferredSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 52));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+
+        addPatientTableGridCell(header, appointmentHeaderLabel("Patient ID"), 0, GridBagConstraints.WEST);
+        addPatientTableGridCell(header, appointmentHeaderLabel("First Name"), 1, GridBagConstraints.WEST);
+        addPatientTableGridCell(header, appointmentHeaderLabel("Middle Name"), 2, GridBagConstraints.WEST);
+        addPatientTableGridCell(header, appointmentHeaderLabel("Last Name"), 3, GridBagConstraints.WEST);
+        addPatientTableGridCell(header, appointmentHeaderLabel("Contact Number"), 4, GridBagConstraints.WEST);
+        addPatientTableGridCell(header, appointmentHeaderLabel("Emergency Contact"), 5, GridBagConstraints.WEST);
+        JLabel actionsHeader = appointmentHeaderLabel("Actions");
+        actionsHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addPatientTableGridCell(header, actionsHeader, 6, GridBagConstraints.CENTER);
+        return header;
+    }
+
+    private int patientColumnWidth(int columnIndex) {
+        if (columnIndex < 0 || columnIndex >= PATIENT_TABLE_COLUMN_WIDTHS.length) {
+            return 120;
+        }
+        return PATIENT_TABLE_COLUMN_WIDTHS[columnIndex];
+    }
+
+    private void addPatientTableGridCell(JPanel row, Component content, int columnIndex, int anchor) {
+        int colWidth = patientColumnWidth(columnIndex);
+        Dimension contentPref = content.getPreferredSize();
+        int prefHeight = Math.max(24, contentPref == null ? 24 : contentPref.height);
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setOpaque(false);
+        wrapper.setMinimumSize(new Dimension(colWidth, prefHeight));
+        wrapper.setPreferredSize(new Dimension(colWidth, prefHeight));
+        wrapper.setMaximumSize(new Dimension(colWidth, Integer.MAX_VALUE));
+        if (anchor == GridBagConstraints.CENTER) {
+            wrapper.add(content, BorderLayout.CENTER);
+        } else if (anchor == GridBagConstraints.EAST || anchor == GridBagConstraints.NORTHEAST || anchor == GridBagConstraints.SOUTHEAST) {
+            wrapper.add(content, BorderLayout.EAST);
+        } else {
+            wrapper.add(content, BorderLayout.WEST);
+        }
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = columnIndex;
+        gbc.gridy = 0;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = anchor;
+        gbc.insets = new java.awt.Insets(0, 8, 0, 8);
+        row.add(wrapper, gbc);
+    }
+
+    private JPanel appointmentWrappedTextCell(String text, int preferredWidth) {
+        int safeWidth = Math.max(80, preferredWidth);
+        String safeValue = safeText(text, "N/A");
+        JTextArea textArea = new JTextArea(safeValue);
+        textArea.setEditable(false);
+        textArea.setFocusable(false);
+        textArea.setOpaque(false);
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
+        textArea.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        textArea.setForeground(new Color(64, 78, 104));
+        textArea.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        textArea.setRows(1);
+        textArea.setColumns(Math.max(8, safeWidth / 10));
+        textArea.setSize(new Dimension(safeWidth, Integer.MAX_VALUE));
+
+        Dimension textPreferred = textArea.getPreferredSize();
+        int finalHeight = Math.max(22, textPreferred.height);
+
+        JPanel wrap = new JPanel(new BorderLayout());
+        wrap.setOpaque(false);
+        wrap.add(textArea, BorderLayout.NORTH);
+        wrap.setPreferredSize(new Dimension(safeWidth, finalHeight));
+        wrap.setMinimumSize(new Dimension(safeWidth, finalHeight));
+        wrap.setMaximumSize(new Dimension(safeWidth, finalHeight));
+        return wrap;
     }
 
     private JLabel rowLabel(String text) {
@@ -3392,8 +4982,62 @@ public class AdminDashboardFrame extends JFrame {
         rowsPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
     }
 
+    private void updateRowsPanelHeightFromChildren(JPanel rowsPanel) {
+        if (rowsPanel == null) {
+            return;
+        }
+        int totalHeight = 6;
+        Component[] children = rowsPanel.getComponents();
+        if (children.length == 0) {
+            updateRowsPanelPreferredHeight(rowsPanel, 1);
+            return;
+        }
+        for (Component child : children) {
+            if (child == null) {
+                continue;
+            }
+            Dimension pref = child.getPreferredSize();
+            totalHeight += Math.max(0, pref == null ? 0 : pref.height);
+        }
+        totalHeight = Math.max(1, totalHeight);
+        int targetWidth = APPOINTMENT_TABLE_TOTAL_WIDTH;
+        Object tableWidthObj = rowsPanel.getClientProperty("qc.tableWidth");
+        if (tableWidthObj instanceof Number) {
+            targetWidth = Math.max(10, ((Number) tableWidthObj).intValue());
+        }
+        rowsPanel.setMinimumSize(new Dimension(targetWidth, totalHeight));
+        rowsPanel.setPreferredSize(new Dimension(targetWidth, totalHeight));
+        rowsPanel.setMaximumSize(new Dimension(targetWidth, totalHeight));
+    }
+
     private JScrollPane tableRowsScrollPane(JPanel rowsPanel) {
+        return tableRowsScrollPane(rowsPanel, false);
+    }
+
+    private JScrollPane tableRowsScrollPane(JPanel rowsPanel, boolean allowHorizontalScroll) {
         rowsPanel.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
+        JScrollPane scrollPane = new JScrollPane(rowsPanel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.setHorizontalScrollBarPolicy(
+            allowHorizontalScroll ? JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED : JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
+        );
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setWheelScrollingEnabled(true);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(18);
+        scrollPane.getVerticalScrollBar().setPreferredSize(new Dimension(10, Integer.MAX_VALUE));
+        if (allowHorizontalScroll) {
+            scrollPane.getHorizontalScrollBar().setUnitIncrement(22);
+            scrollPane.getHorizontalScrollBar().setPreferredSize(new Dimension(Integer.MAX_VALUE, 10));
+        }
+        scrollPane.setMinimumSize(new Dimension(100, TABLE_SCROLL_HEIGHT));
+        scrollPane.setPreferredSize(new Dimension(1000, TABLE_SCROLL_HEIGHT));
+        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, TABLE_SCROLL_HEIGHT));
+        return scrollPane;
+    }
+
+    private JScrollPane dashboardTodayRowsScrollPane(JPanel rowsPanel) {
         JScrollPane scrollPane = new JScrollPane(rowsPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.setOpaque(false);
@@ -3401,12 +5045,31 @@ public class AdminDashboardFrame extends JFrame {
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         scrollPane.setWheelScrollingEnabled(true);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(18);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scrollPane.getVerticalScrollBar().setBlockIncrement(64);
         scrollPane.getVerticalScrollBar().setPreferredSize(new Dimension(10, Integer.MAX_VALUE));
-        scrollPane.setMinimumSize(new Dimension(100, TABLE_SCROLL_HEIGHT));
-        scrollPane.setPreferredSize(new Dimension(1000, TABLE_SCROLL_HEIGHT));
-        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, TABLE_SCROLL_HEIGHT));
+        scrollPane.setMinimumSize(new Dimension(100, DASHBOARD_TODAY_SCROLL_HEIGHT));
+        scrollPane.setPreferredSize(new Dimension(1000, DASHBOARD_TODAY_SCROLL_HEIGHT));
+        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, DASHBOARD_TODAY_SCROLL_HEIGHT));
         return scrollPane;
+    }
+
+    private void updateDashboardTodayRowsHeight(int rowCount, boolean emptyState) {
+        if (dashboardTodayRows == null) {
+            return;
+        }
+        int contentHeight;
+        if (emptyState) {
+            contentHeight = DASHBOARD_TODAY_SCROLL_HEIGHT;
+        } else {
+            int safeRows = Math.max(1, rowCount);
+            contentHeight = (safeRows * DASHBOARD_TODAY_ROW_HEIGHT)
+                + (Math.max(0, safeRows - 1) * DASHBOARD_TODAY_ROW_GAP)
+                + 4;
+        }
+        dashboardTodayRows.setMinimumSize(new Dimension(10, contentHeight));
+        dashboardTodayRows.setPreferredSize(new Dimension(10, contentHeight));
+        dashboardTodayRows.setMaximumSize(new Dimension(Integer.MAX_VALUE, contentHeight));
     }
 
     private JPanel emptyStatePanel(String title, String description) {
@@ -3441,6 +5104,45 @@ public class AdminDashboardFrame extends JFrame {
 
         wrapper.add(stack, new GridBagConstraints());
         return wrapper;
+    }
+
+    private JPanel calendarDateEmptyStatePanel() {
+        RoundedPanel card = new RoundedPanel(14, new Color(247, 250, 255));
+        card.setLayout(new GridBagLayout());
+        card.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
+                BorderFactory.createEmptyBorder(18, 14, 18, 14)
+            )
+        );
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        int emptyHeight = Math.max(TABLE_ROW_HEIGHT, TABLE_SCROLL_HEIGHT - 10);
+        card.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, emptyHeight));
+        card.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, emptyHeight));
+        card.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, emptyHeight));
+
+        JPanel stack = new JPanel();
+        stack.setOpaque(false);
+        stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+
+        JLabel title = new JLabel("No appointments for this date.");
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setForeground(new Color(66, 83, 118));
+
+        String selectedDate = appointmentCalendarDate == null
+            ? "-"
+            : appointmentCalendarDate.format(APPOINTMENT_CALENDAR_TITLE_FORMAT);
+        JLabel subtitle = new JLabel(selectedDate);
+        subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        subtitle.setForeground(new Color(126, 140, 168));
+
+        stack.add(title);
+        stack.add(Box.createVerticalStrut(8));
+        stack.add(subtitle);
+        card.add(stack, new GridBagConstraints());
+        return card;
     }
 
     private JPanel separatorLine() {
@@ -3591,6 +5293,8 @@ public class AdminDashboardFrame extends JFrame {
         final String dateText;
         final String timeText;
         final String reason;
+        final String allergies;
+        final String notes;
         final LocalDate appointmentDate;
         final LocalTime appointmentTime;
         String status;
@@ -3602,6 +5306,8 @@ public class AdminDashboardFrame extends JFrame {
             String dateText,
             String timeText,
             String reason,
+            String allergies,
+            String notes,
             String status,
             String cancelReason,
             LocalDate appointmentDate,
@@ -3612,6 +5318,8 @@ public class AdminDashboardFrame extends JFrame {
             this.dateText = dateText;
             this.timeText = timeText;
             this.reason = reason;
+            this.allergies = allergies;
+            this.notes = notes;
             this.status = status;
             this.cancelReason = cancelReason;
             this.appointmentDate = appointmentDate;
@@ -3624,12 +5332,14 @@ public class AdminDashboardFrame extends JFrame {
         final String patientId;
         String name;
         String contactNumber;
+        String emergencyContactNumber;
 
-        PatientRecord(int id, String patientId, String name, String contactNumber) {
+        PatientRecord(int id, String patientId, String name, String contactNumber, String emergencyContactNumber) {
             this.id = id;
             this.patientId = patientId;
             this.name = name;
             this.contactNumber = contactNumber;
+            this.emergencyContactNumber = emergencyContactNumber;
         }
     }
 

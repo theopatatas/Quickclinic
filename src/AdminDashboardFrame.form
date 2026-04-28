@@ -219,7 +219,7 @@
                             <Property name="foreground" type="java.awt.Color" editor="org.netbeans.beaninfo.editors.ColorEditor">
                               <Color blue="f2" green="e0" red="d9" type="rgb"/>
                             </Property>
-                            <Property name="text" type="java.lang.String" value="Log"/>
+                            <Property name="text" type="java.lang.String" value="Logs"/>
                             <Property name="border" type="javax.swing.border.Border" editor="org.netbeans.modules.form.editors2.BorderEditor">
                               <Border info="org.netbeans.modules.form.compat2.border.EmptyBorderInfo">
                                 <EmptyBorder bottom="12" left="20" right="20" top="12"/>

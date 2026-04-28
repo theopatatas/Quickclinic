@@ -151,18 +151,25 @@ public class LoginFrame extends JFrame {
     private void btnLoginActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnLoginActionPerformed
         lblError.setForeground(new Color(188, 34, 50));
         lblError.setText(" ");
+        resetLoginFieldStyles();
 
         String username = readUsername();
         String password = readPassword();
 
-        if (username.isEmpty() || password.isEmpty()) {
-            lblError.setText("Please enter username and password.");
+        if (username.isEmpty()) {
+            markLoginFieldInvalid(txtUsername);
+            lblError.setText("Username is required.");
+            return;
+        }
+        if (password.isEmpty()) {
+            markLoginFieldInvalid(txtPassword);
+            lblError.setText("Password is required.");
             return;
         }
 
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
-                lblError.setText("Error connecting to database.");
+                lblError.setText("Database connection failed. Make sure MySQL is running and MySQL connector is configured.");
                 return;
             }
 
@@ -182,13 +189,19 @@ public class LoginFrame extends JFrame {
                     } else {
                         lblError.setForeground(new Color(188, 34, 50));
                         lblError.setText("Invalid username or password.");
+                        markLoginFieldInvalid(txtUsername);
+                        markLoginFieldInvalid(txtPassword);
                     }
                 }
             }
         } catch (SQLException e) {
             e.printStackTrace();
             lblError.setForeground(new Color(188, 34, 50));
-            lblError.setText("Error connecting to database.");
+            if (e.getSQLState() != null && e.getSQLState().startsWith("08")) {
+                lblError.setText("Cannot connect to database. Please check server connection and try again.");
+            } else {
+                lblError.setText("Login request failed. Please verify your account table/setup and try again.");
+            }
         }
     }//GEN-LAST:event_btnLoginActionPerformed
 
@@ -291,6 +304,15 @@ public class LoginFrame extends JFrame {
     private String readPassword() {
         boolean active = Boolean.TRUE.equals(txtPassword.getClientProperty("placeholder.active"));
         return active ? "" : new String(txtPassword.getPassword());
+    }
+
+    private void resetLoginFieldStyles() {
+        txtUsername.setBackground(Color.WHITE);
+        txtPassword.setBackground(Color.WHITE);
+    }
+
+    private void markLoginFieldInvalid(javax.swing.JComponent field) {
+        field.setBackground(new Color(255, 244, 244));
     }
 
     private String resolveAccountRole(ResultSet rs, String username) {
