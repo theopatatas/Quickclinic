@@ -13,6 +13,7 @@ import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
+import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
@@ -76,7 +77,7 @@ public class AdminDashboardFrame extends JFrame {
     private static final int TABLE_VISIBLE_ROWS = 4;
     private static final int TABLE_ROW_HEIGHT = 96;
     private static final int TABLE_ROW_GAP = 8;
-    private static final int DASHBOARD_TODAY_VISIBLE_ROWS = 4;
+    private static final int DASHBOARD_TODAY_VISIBLE_ROWS = 6;
     private static final int DASHBOARD_TODAY_ROW_HEIGHT = 74;
     private static final int DASHBOARD_TODAY_ROW_GAP = 8;
     private static final int DASHBOARD_TODAY_SCROLL_HEIGHT =
@@ -195,7 +196,6 @@ public class AdminDashboardFrame extends JFrame {
     private JLabel dashboardTodayValue;
     private JLabel dashboardPendingValue;
     private JLabel dashboardCompletedValue;
-    private JLabel dashboardPatientsValue;
     private JLabel dashboardReceptionistsValue;
     private JPanel dashboardTodayRows;
     // Variables declaration - do not modify//GEN-BEGIN:variables
@@ -567,17 +567,17 @@ public class AdminDashboardFrame extends JFrame {
 
         previewPatientsCardTitleLabel.setFont(new java.awt.Font("Segoe UI", 1, 13)); // NOI18N
         previewPatientsCardTitleLabel.setForeground(new java.awt.Color(33, 47, 83));
-        previewPatientsCardTitleLabel.setText("Total Patients");
+        previewPatientsCardTitleLabel.setText("Receptionist Accounts");
         previewPatientsCardPanel.add(previewPatientsCardTitleLabel, java.awt.BorderLayout.NORTH);
 
         previewPatientsCardValueLabel.setFont(new java.awt.Font("Segoe UI", 1, 52)); // NOI18N
-        previewPatientsCardValueLabel.setForeground(new java.awt.Color(52, 163, 188));
+        previewPatientsCardValueLabel.setForeground(new java.awt.Color(120, 80, 218));
         previewPatientsCardValueLabel.setText("0");
         previewPatientsCardPanel.add(previewPatientsCardValueLabel, java.awt.BorderLayout.CENTER);
 
         previewPatientsCardSubLabel.setFont(new java.awt.Font("Segoe UI", 0, 12)); // NOI18N
         previewPatientsCardSubLabel.setForeground(new java.awt.Color(107, 124, 157));
-        previewPatientsCardSubLabel.setText("Registered patients");
+        previewPatientsCardSubLabel.setText("Total receptionist accounts");
         previewPatientsCardPanel.add(previewPatientsCardSubLabel, java.awt.BorderLayout.SOUTH);
 
         previewStatsGridPanel.add(previewPatientsCardPanel);
@@ -712,7 +712,7 @@ public class AdminDashboardFrame extends JFrame {
         statsGrid.add(previewStatCard("Today's Appointments", "0", "No appointments today", new Color(57, 98, 226)));
         statsGrid.add(previewStatCard("Pending", "0", "Appointments pending", new Color(230, 148, 33)));
         statsGrid.add(previewStatCard("Completed", "0", "Appointments completed", new Color(45, 173, 94)));
-        statsGrid.add(previewStatCard("Total Patients", "0", "Registered patients", new Color(52, 163, 188)));
+        statsGrid.add(previewStatCard("Receptionist Accounts", "0", "Total receptionist accounts", new Color(120, 80, 218)));
 
         body.add(statsGrid, BorderLayout.NORTH);
         body.add(previewAppointmentCard(), BorderLayout.CENTER);
@@ -946,24 +946,20 @@ public class AdminDashboardFrame extends JFrame {
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBorder(BorderFactory.createEmptyBorder(22, 0, 0, 0));
 
-        JPanel stats = new JPanel(new GridLayout(receptionistMode ? 2 : 3, 2, 18, 18));
+        JPanel stats = new JPanel(new GridLayout(2, 2, 18, 18));
         stats.setOpaque(false);
         stats.add(statCard("Today's Appointments", valLabel(out -> dashboardTodayValue = out), "No appointments today", new Color(63, 101, 228), new Color(236, 240, 250)));
         stats.add(statCard("Pending", valLabel(out -> dashboardPendingValue = out), "Appointments pending", new Color(235, 153, 45), new Color(248, 240, 229)));
         stats.add(statCard("Completed", valLabel(out -> dashboardCompletedValue = out), "Appointments completed", new Color(46, 174, 102), new Color(232, 246, 238)));
-        stats.add(statCard("Total Patients", valLabel(out -> dashboardPatientsValue = out), "Registered patients", new Color(54, 163, 189), new Color(228, 244, 247)));
-        if (!receptionistMode) {
-            stats.add(statCard("Receptionists", valLabel(out -> dashboardReceptionistsValue = out), "Active receptionists", new Color(120, 80, 218), new Color(241, 234, 251)));
-            JPanel blank = new JPanel();
-            blank.setOpaque(false);
-            stats.add(blank);
-        }
+        stats.add(statCard("Receptionist Accounts", valLabel(out -> dashboardReceptionistsValue = out), "Total receptionist accounts", new Color(120, 80, 218), new Color(241, 234, 251)));
 
         RoundedPanel appointments = sectionCard();
         appointments.setLayout(new BorderLayout());
         appointments.setBorder(BorderFactory.createEmptyBorder(20, 22, 20, 22));
-        appointments.setPreferredSize(new Dimension(1000, 404));
-        appointments.setMaximumSize(new Dimension(Integer.MAX_VALUE, 430));
+        int todaySectionHeight = DASHBOARD_TODAY_SCROLL_HEIGHT + 98;
+        appointments.setMinimumSize(new Dimension(100, todaySectionHeight));
+        appointments.setPreferredSize(new Dimension(1000, todaySectionHeight));
+        appointments.setMaximumSize(new Dimension(Integer.MAX_VALUE, todaySectionHeight + 26));
 
         JPanel appHeader = new JPanel(new BorderLayout());
         appHeader.setOpaque(false);
@@ -1021,28 +1017,42 @@ public class AdminDashboardFrame extends JFrame {
         summary.add(summaryCard("◷", "Pending", valLabel(out -> apptPendingValue = out), new Color(235, 153, 45)));
         summary.add(summaryCard("✓", "Completed", valLabel(out -> apptCompletedValue = out), new Color(73, 190, 107)));
 
-        RoundedPanel toggleCard = sectionCard();
-        toggleCard.setLayout(new BoxLayout(toggleCard, BoxLayout.X_AXIS));
-        toggleCard.setBorder(BorderFactory.createEmptyBorder(18, 22, 18, 22));
-        toggleCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        RoundedPanel controlsCard = sectionCard();
+        controlsCard.setLayout(new GridBagLayout());
+        controlsCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        controlsCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
+
         tableToggle = new TogglePill("☷  Table View");
         calendarToggle = new TogglePill("◫  Calendar View");
-        toggleCard.add(tableToggle);
-        toggleCard.add(Box.createHorizontalStrut(10));
-        toggleCard.add(calendarToggle);
-        toggleCard.add(Box.createHorizontalGlue());
 
-        RoundedPanel searchCard = sectionCard();
-        searchCard.setLayout(new BorderLayout());
-        searchCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
-        searchCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 132));
         RoundedPanel searchBox = searchFieldBox("Search by patient name or reason...");
+        searchBox.setPreferredSize(new Dimension(560, 64));
+        searchBox.setMinimumSize(new Dimension(260, 64));
+        searchBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
+
+        GridBagConstraints controlsGbc = new GridBagConstraints();
+        controlsGbc.gridx = 0;
+        controlsGbc.gridy = 0;
+        controlsGbc.anchor = GridBagConstraints.WEST;
+        controlsGbc.fill = GridBagConstraints.NONE;
+        controlsGbc.insets = new Insets(0, 0, 0, 10);
+        controlsCard.add(tableToggle, controlsGbc);
+
+        controlsGbc.gridx = 1;
+        controlsGbc.insets = new Insets(0, 0, 0, 14);
+        controlsCard.add(calendarToggle, controlsGbc);
+
+        controlsGbc.gridx = 2;
+        controlsGbc.weightx = 1.0;
+        controlsGbc.fill = GridBagConstraints.HORIZONTAL;
+        controlsGbc.insets = new Insets(0, 0, 0, 0);
+        controlsCard.add(searchBox, controlsGbc);
+
         appointmentSearchField = (JTextField) searchBox.getClientProperty("searchField");
         bindLiveSearch(appointmentSearchField, () -> {
             appointmentSearchQuery = appointmentSearchField.getText().trim().toLowerCase(Locale.ENGLISH);
             refreshAppointmentRows();
         });
-        searchCard.add(searchBox, BorderLayout.CENTER);
 
         appointmentModeLayout = new CardLayout();
         appointmentModePanel = new JPanel(appointmentModeLayout);
@@ -1073,9 +1083,7 @@ public class AdminDashboardFrame extends JFrame {
 
         body.add(summary);
         body.add(Box.createVerticalStrut(18));
-        body.add(toggleCard);
-        body.add(Box.createVerticalStrut(18));
-        body.add(searchCard);
+        body.add(controlsCard);
         body.add(Box.createVerticalStrut(18));
         body.add(appointmentModePanel);
         return wrapMainView(header, body);
@@ -1103,6 +1111,7 @@ public class AdminDashboardFrame extends JFrame {
         headerCorner.setOpaque(false);
         tableScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, headerCorner);
 
+        tableCard.add(horizontalScrollHintPanel(), BorderLayout.NORTH);
         tableCard.add(tableScroll, BorderLayout.CENTER);
         return tableCard;
     }
@@ -1205,6 +1214,7 @@ public class AdminDashboardFrame extends JFrame {
         JPanel calendarHeaderCorner = new JPanel();
         calendarHeaderCorner.setOpaque(false);
         calendarScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, calendarHeaderCorner);
+        listCard.add(horizontalScrollHintPanel(), BorderLayout.NORTH);
         listCard.add(calendarScroll, BorderLayout.CENTER);
 
         calendarPanel.add(dateCard);
@@ -1283,6 +1293,7 @@ public class AdminDashboardFrame extends JFrame {
         patientScroll.getVerticalScrollBar().setUnitIncrement(22);
         patientScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
 
+        tableCard.add(horizontalScrollHintPanel(), BorderLayout.NORTH);
         tableCard.add(patientScroll, BorderLayout.CENTER);
 
         body.add(summaryCard);
@@ -1383,6 +1394,7 @@ public class AdminDashboardFrame extends JFrame {
         logScroll.getVerticalScrollBar().setUnitIncrement(22);
         logScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
 
+        tableCard.add(horizontalScrollHintPanel(), BorderLayout.NORTH);
         tableCard.add(logScroll, BorderLayout.CENTER);
 
         body.add(summary);
@@ -1817,6 +1829,10 @@ public class AdminDashboardFrame extends JFrame {
 
     private void applyLettersOnlyInputRestriction(JTextField field) {
         applyFilteredInputRestriction(field, "[A-Za-z]*", -1);
+    }
+
+    private void applyLettersAndSpacesInputRestriction(JTextField field) {
+        applyFilteredInputRestriction(field, "[A-Za-z ]*", -1);
     }
 
     private void applyDigitsOnlyInputRestriction(JTextField field, int maxLength) {
@@ -2698,7 +2714,12 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
-    private boolean updateReceptionistInDatabase(ReceptionistRecord record, String fullName, String username) {
+    private boolean updateReceptionistInDatabase(
+        ReceptionistRecord record,
+        String fullName,
+        String username,
+        String newPassword
+    ) {
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
                 return false;
@@ -2715,6 +2736,13 @@ public class AdminDashboardFrame extends JFrame {
             if (meta.nameColumn != null) {
                 setParts.add(meta.nameColumn + "=?");
                 values.add(fullName);
+            }
+            if (newPassword != null && !newPassword.isBlank()) {
+                if (!meta.columns.contains("password")) {
+                    return false;
+                }
+                setParts.add("password=?");
+                values.add(newPassword);
             }
 
             String where = record.accountPk > 0 && meta.idColumn != null
@@ -2835,7 +2863,9 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void openAddAppointmentDialog() {
-        JTextField patient = new JTextField();
+        JTextField firstName = new JTextField();
+        JTextField middleName = new JTextField();
+        JTextField lastName = new JTextField();
         JDateChooser datePicker = new JDateChooser();
         datePicker.setDateFormatString("MM/dd/yyyy");
         datePicker.setDate(new java.util.Date());
@@ -2845,10 +2875,17 @@ public class AdminDashboardFrame extends JFrame {
         JTextField allergies = new JTextField();
         JTextField notes = new JTextField();
 
-        styleInputField(patient);
+        styleInputField(firstName);
+        styleInputField(middleName);
+        styleInputField(lastName);
         styleInputField(reason);
         styleInputField(allergies);
         styleInputField(notes);
+        applyLettersOnlyInputRestriction(firstName);
+        applyLettersOnlyInputRestriction(middleName);
+        applyLettersOnlyInputRestriction(lastName);
+        applyLettersAndSpacesInputRestriction(reason);
+        applyLettersAndSpacesInputRestriction(allergies);
         styleDateChooserField(datePicker);
         applyDefaultFieldBorder(timeSelector);
 
@@ -2857,7 +2894,9 @@ public class AdminDashboardFrame extends JFrame {
         timeSelector.setPreferredSize(new Dimension(320, 42));
         timeSelector.setSelectedItem("9:00 AM");
 
-        patient.setPreferredSize(new Dimension(320, 42));
+        firstName.setPreferredSize(new Dimension(320, 42));
+        middleName.setPreferredSize(new Dimension(320, 42));
+        lastName.setPreferredSize(new Dimension(320, 42));
         reason.setPreferredSize(new Dimension(320, 42));
         allergies.setPreferredSize(new Dimension(320, 42));
         notes.setPreferredSize(new Dimension(320, 42));
@@ -2872,10 +2911,24 @@ public class AdminDashboardFrame extends JFrame {
         gbc.weightx = 1.0;
         gbc.insets = new java.awt.Insets(0, 0, 8, 0);
 
-        form.add(new JLabel("Patient Name"), gbc);
+        form.add(new JLabel("First Name"), gbc);
         gbc.gridy++;
         gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(patient, gbc);
+        form.add(firstName, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Middle Name (optional)"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(middleName, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        form.add(new JLabel("Last Name"), gbc);
+        gbc.gridy++;
+        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
+        form.add(lastName, gbc);
 
         gbc.gridy++;
         gbc.insets = new java.awt.Insets(0, 0, 8, 0);
@@ -2925,9 +2978,11 @@ public class AdminDashboardFrame extends JFrame {
                 return;
             }
 
-            resetFieldValidationState(patient, datePicker, timeSelector, reason, allergies, notes);
+            resetFieldValidationState(firstName, middleName, lastName, datePicker, timeSelector, reason, allergies, notes);
 
-            String patientName = patient.getText().trim();
+            String firstNameText = firstName.getText().trim();
+            String middleNameText = middleName.getText().trim();
+            String lastNameText = lastName.getText().trim();
             String reasonText = reason.getText().trim();
             String allergiesText = allergies.getText().trim();
             String notesText = notes.getText().trim();
@@ -2949,12 +3004,37 @@ public class AdminDashboardFrame extends JFrame {
                 ? ""
                 : timeSelector.getSelectedItem().toString().trim();
 
-            if (patientName.isBlank()) {
-                highlightInvalidField(patient);
+            String firstNameError = validateRequiredPatientNamePart("First Name", firstNameText);
+            if (firstNameError != null) {
+                highlightInvalidField(firstName);
                 JOptionPane.showMessageDialog(
                     this,
-                    "Patient Name is required.",
-                    "Invalid Patient Name",
+                    firstNameError,
+                    "Invalid First Name",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String middleNameError = validateOptionalPatientNamePart("Middle Name", middleNameText);
+            if (middleNameError != null) {
+                highlightInvalidField(middleName);
+                JOptionPane.showMessageDialog(
+                    this,
+                    middleNameError,
+                    "Invalid Middle Name",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String lastNameError = validateRequiredPatientNamePart("Last Name", lastNameText);
+            if (lastNameError != null) {
+                highlightInvalidField(lastName);
+                JOptionPane.showMessageDialog(
+                    this,
+                    lastNameError,
+                    "Invalid Last Name",
                     JOptionPane.WARNING_MESSAGE
                 );
                 continue;
@@ -2984,12 +3064,25 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
-            if (reasonText.isBlank()) {
+            String reasonError = validateLettersAndSpacesField("Reason", reasonText, true);
+            if (reasonError != null) {
                 highlightInvalidField(reason);
                 JOptionPane.showMessageDialog(
                     this,
-                    "Reason for appointment is required.",
+                    reasonError,
                     "Invalid Reason",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String allergiesError = validateLettersAndSpacesField("Allergies", allergiesText, false);
+            if (allergiesError != null) {
+                highlightInvalidField(allergies);
+                JOptionPane.showMessageDialog(
+                    this,
+                    allergiesError,
+                    "Invalid Allergies",
                     JOptionPane.WARNING_MESSAGE
                 );
                 continue;
@@ -3021,6 +3114,7 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
+            String patientName = buildPatientFullName(firstNameText, middleNameText, lastNameText);
             if (!insertAppointmentToDatabase(
                 patientName,
                 appointmentDate,
@@ -3052,20 +3146,39 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void openAddReceptionistDialog() {
-        JTextField name = new JTextField();
+        if (!confirmAdminPasswordForReceptionistEdit()) {
+            return;
+        }
+
+        JTextField firstName = new JTextField();
+        JTextField middleName = new JTextField();
+        JTextField lastName = new JTextField();
         JTextField username = new JTextField();
         JPasswordField password = new JPasswordField();
-        styleInputField(name);
+        JPasswordField confirmPassword = new JPasswordField();
+        styleInputField(firstName);
+        styleInputField(middleName);
+        styleInputField(lastName);
         styleInputField(username);
         stylePasswordField(password);
+        stylePasswordField(confirmPassword);
+        applyLettersOnlyInputRestriction(firstName);
+        applyLettersOnlyInputRestriction(middleName);
+        applyLettersOnlyInputRestriction(lastName);
 
         JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-        form.add(new JLabel("Full Name"));
-        form.add(name);
+        form.add(new JLabel("First Name"));
+        form.add(firstName);
+        form.add(new JLabel("Middle Name (optional)"));
+        form.add(middleName);
+        form.add(new JLabel("Last Name"));
+        form.add(lastName);
         form.add(new JLabel("Username"));
         form.add(username);
         form.add(new JLabel("Password"));
         form.add(password);
+        form.add(new JLabel("Confirm Password"));
+        form.add(confirmPassword);
 
         while (true) {
             int result = JOptionPane.showConfirmDialog(
@@ -3080,16 +3193,33 @@ public class AdminDashboardFrame extends JFrame {
                 return;
             }
 
-            resetFieldValidationState(name, username, password);
+            resetFieldValidationState(firstName, middleName, lastName, username, password, confirmPassword);
 
-            String nameText = name.getText().trim();
+            String firstNameText = firstName.getText().trim();
+            String middleNameText = middleName.getText().trim();
+            String lastNameText = lastName.getText().trim();
             String usernameText = username.getText().trim();
             String plainPassword = new String(password.getPassword()).trim();
+            String plainConfirmPassword = new String(confirmPassword.getPassword()).trim();
 
-            String nameError = validateReceptionistName(nameText);
-            if (nameError != null) {
-                highlightInvalidField(name);
-                JOptionPane.showMessageDialog(this, nameError, "Invalid Name", JOptionPane.WARNING_MESSAGE);
+            String firstNameError = validateRequiredPatientNamePart("First Name", firstNameText);
+            if (firstNameError != null) {
+                highlightInvalidField(firstName);
+                JOptionPane.showMessageDialog(this, firstNameError, "Invalid First Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String middleNameError = validateOptionalPatientNamePart("Middle Name", middleNameText);
+            if (middleNameError != null) {
+                highlightInvalidField(middleName);
+                JOptionPane.showMessageDialog(this, middleNameError, "Invalid Middle Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String lastNameError = validateRequiredPatientNamePart("Last Name", lastNameText);
+            if (lastNameError != null) {
+                highlightInvalidField(lastName);
+                JOptionPane.showMessageDialog(this, lastNameError, "Invalid Last Name", JOptionPane.WARNING_MESSAGE);
                 continue;
             }
 
@@ -3107,6 +3237,18 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
+            if (!plainPassword.equals(plainConfirmPassword)) {
+                highlightInvalidField(password);
+                highlightInvalidField(confirmPassword);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Password and Confirm Password do not match.",
+                    "Password Mismatch",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
             String usernameDuplicateError = validateReceptionistUsernameUniqueness(usernameText, null, null);
             if (usernameDuplicateError != null) {
                 highlightInvalidField(username);
@@ -3114,7 +3256,9 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
-            if (!insertReceptionistToDatabase(nameText, usernameText, plainPassword)) {
+            String fullName = buildReceptionistFullName(firstNameText, middleNameText, lastNameText);
+
+            if (!insertReceptionistToDatabase(fullName, usernameText, plainPassword)) {
                 String duplicateAfterSaveError = validateReceptionistUsernameUniqueness(usernameText, null, null);
                 if (duplicateAfterSaveError != null && duplicateAfterSaveError.startsWith("Username already exists")) {
                     highlightInvalidField(username);
@@ -3284,8 +3428,7 @@ public class AdminDashboardFrame extends JFrame {
         }
         int pending = countByStatus("pending");
         int completed = countByStatus("completed");
-        int totalPatients = patientRecords.size();
-        int activeReceptionists = countReceptionistsByStatus("active");
+        int receptionistAccounts = receptionistRecords.size();
 
         if (dashboardTodayValue != null) {
             dashboardTodayValue.setText(String.valueOf(todayTotal));
@@ -3296,11 +3439,8 @@ public class AdminDashboardFrame extends JFrame {
         if (dashboardCompletedValue != null) {
             dashboardCompletedValue.setText(String.valueOf(completed));
         }
-        if (dashboardPatientsValue != null) {
-            dashboardPatientsValue.setText(String.valueOf(totalPatients));
-        }
         if (dashboardReceptionistsValue != null) {
-            dashboardReceptionistsValue.setText(String.valueOf(activeReceptionists));
+            dashboardReceptionistsValue.setText(String.valueOf(receptionistAccounts));
         }
     }
 
@@ -3896,7 +4036,7 @@ public class AdminDashboardFrame extends JFrame {
         }
 
         if (logged.isEmpty()) {
-            logRows.add(emptyStatePanel("No archived records yet.", "Completed and cancelled appointments will appear here."));
+            logRows.add(logEmptyStatePanel());
             updateRowsPanelHeightFromChildren(logRows);
         } else {
             int i = 0;
@@ -4061,9 +4201,9 @@ public class AdminDashboardFrame extends JFrame {
 
         if (filtered.isEmpty()) {
             if ("active".equals(receptionistFilter)) {
-                receptionistRows.add(emptyStatePanel("No active receptionists yet.", "Use Add Receptionist to create an account."));
+                receptionistRows.add(receptionistEmptyStatePanel("No active receptionists yet."));
             } else {
-                receptionistRows.add(emptyStatePanel("No deactivated receptionists yet.", "Deactivated accounts will appear here."));
+                receptionistRows.add(receptionistEmptyStatePanel("No deactivated receptionists yet."));
             }
             updateRowsPanelPreferredHeight(receptionistRows, 1);
         } else {
@@ -4080,6 +4220,19 @@ public class AdminDashboardFrame extends JFrame {
 
         receptionistRows.revalidate();
         receptionistRows.repaint();
+    }
+
+    private JPanel receptionistEmptyStatePanel(String messageText) {
+        JPanel wrapper = new JPanel(new GridBagLayout());
+        wrapper.setOpaque(false);
+        wrapper.setBorder(BorderFactory.createEmptyBorder(26, 0, 26, 0));
+
+        JLabel message = new JLabel(messageText);
+        message.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        message.setForeground(new Color(88, 103, 131));
+        message.setHorizontalAlignment(SwingConstants.CENTER);
+        wrapper.add(message, new GridBagConstraints());
+        return wrapper;
     }
 
     private JPanel receptionistRow(ReceptionistRecord record) {
@@ -4121,15 +4274,27 @@ public class AdminDashboardFrame extends JFrame {
 
         JButton edit = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
         edit.addActionListener(e -> {
+            if (!confirmAdminPasswordForReceptionistEdit()) {
+                return;
+            }
+
             JTextField nameField = new JTextField(record.name);
             JTextField usernameField = new JTextField(record.username);
+            JPasswordField passwordField = new JPasswordField();
+            JPasswordField confirmPasswordField = new JPasswordField();
             styleInputField(nameField);
             styleInputField(usernameField);
+            stylePasswordField(passwordField);
+            stylePasswordField(confirmPasswordField);
             JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
             form.add(new JLabel("Full Name"));
             form.add(nameField);
             form.add(new JLabel("Username"));
             form.add(usernameField);
+            form.add(new JLabel("New Password (optional)"));
+            form.add(passwordField);
+            form.add(new JLabel("Confirm New Password"));
+            form.add(confirmPasswordField);
             while (true) {
                 int result = JOptionPane.showConfirmDialog(
                     this,
@@ -4142,7 +4307,7 @@ public class AdminDashboardFrame extends JFrame {
                     return;
                 }
 
-                resetFieldValidationState(nameField, usernameField);
+                resetFieldValidationState(nameField, usernameField, passwordField, confirmPasswordField);
 
                 String nameError = validateReceptionistName(nameField.getText().trim());
                 if (nameError != null) {
@@ -4169,7 +4334,36 @@ public class AdminDashboardFrame extends JFrame {
                     continue;
                 }
 
-                if (!updateReceptionistInDatabase(record, nameField.getText().trim(), usernameField.getText().trim())) {
+                String newPassword = new String(passwordField.getPassword()).trim();
+                String confirmPassword = new String(confirmPasswordField.getPassword()).trim();
+                boolean updatePassword = !newPassword.isBlank() || !confirmPassword.isBlank();
+
+                if (updatePassword) {
+                    String passwordError = validateReceptionistPassword(newPassword);
+                    if (passwordError != null) {
+                        highlightInvalidField(passwordField);
+                        JOptionPane.showMessageDialog(this, passwordError, "Invalid Password", JOptionPane.WARNING_MESSAGE);
+                        continue;
+                    }
+                    if (!newPassword.equals(confirmPassword)) {
+                        highlightInvalidField(passwordField);
+                        highlightInvalidField(confirmPasswordField);
+                        JOptionPane.showMessageDialog(
+                            this,
+                            "Password and Confirm Password do not match.",
+                            "Password Mismatch",
+                            JOptionPane.WARNING_MESSAGE
+                        );
+                        continue;
+                    }
+                }
+
+                if (!updateReceptionistInDatabase(
+                    record,
+                    nameField.getText().trim(),
+                    usernameField.getText().trim(),
+                    updatePassword ? newPassword : null
+                )) {
                     String duplicateAfterUpdateError = validateReceptionistUsernameUniqueness(
                         usernameField.getText().trim(),
                         record.accountPk > 0 ? record.accountPk : null,
@@ -4193,10 +4387,14 @@ public class AdminDashboardFrame extends JFrame {
             }
         });
 
+        boolean activeReceptionist = "active".equals(record.status);
         JButton statusAction;
-        if ("active".equals(record.status)) {
+        if (activeReceptionist) {
             statusAction = softActionButton("Deactivate", new Color(252, 236, 236), new Color(224, 93, 93));
             statusAction.addActionListener(e -> {
+                if (!confirmAdminPasswordForReceptionistEdit()) {
+                    return;
+                }
                 if (!updateReceptionistStatusInDatabase(record, "deactivated")) {
                     JOptionPane.showMessageDialog(
                         this,
@@ -4211,6 +4409,9 @@ public class AdminDashboardFrame extends JFrame {
         } else {
             statusAction = softActionButton("Activate", new Color(231, 246, 236), new Color(73, 190, 107));
             statusAction.addActionListener(e -> {
+                if (!confirmAdminPasswordForReceptionistEdit()) {
+                    return;
+                }
                 if (!updateReceptionistStatusInDatabase(record, "active")) {
                     JOptionPane.showMessageDialog(
                         this,
@@ -4224,11 +4425,93 @@ public class AdminDashboardFrame extends JFrame {
             });
         }
 
-        actions.add(edit);
-        actions.add(Box.createHorizontalStrut(8));
+        if (activeReceptionist) {
+            actions.add(edit);
+            actions.add(Box.createHorizontalStrut(8));
+        }
         actions.add(statusAction);
         row.add(rowCell(actions), BorderLayout.EAST);
         return row;
+    }
+
+    private boolean confirmAdminPasswordForReceptionistEdit() {
+        JPasswordField adminPasswordField = new JPasswordField();
+        stylePasswordField(adminPasswordField);
+
+        JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
+        form.add(new JLabel("Enter admin password to continue."));
+        form.add(adminPasswordField);
+
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            form,
+            "Confirm Admin Password",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+        if (result != JOptionPane.OK_OPTION) {
+            return false;
+        }
+
+        String adminPassword = new String(adminPasswordField.getPassword()).trim();
+        if (adminPassword.isBlank()) {
+            highlightInvalidField(adminPasswordField);
+            JOptionPane.showMessageDialog(
+                this,
+                "Admin password is required to edit receptionist accounts.",
+                "Admin Password Required",
+                JOptionPane.WARNING_MESSAGE
+            );
+            return false;
+        }
+
+        if (!isAdminPasswordCorrect(adminPassword)) {
+            highlightInvalidField(adminPasswordField);
+            JOptionPane.showMessageDialog(
+                this,
+                "Incorrect admin password. Editing is not allowed.",
+                "Authentication Failed",
+                JOptionPane.ERROR_MESSAGE
+            );
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean isAdminPasswordCorrect(String adminPassword) {
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return false;
+            }
+
+            AccountMeta meta = resolveAccountMeta(con);
+            if (!meta.tableExists || !meta.columns.contains("username") || !meta.columns.contains("password")) {
+                return false;
+            }
+
+            StringBuilder sql = new StringBuilder(
+                "SELECT 1 FROM account WHERE LOWER(username)=LOWER(?) AND password=?"
+            );
+            if (meta.columns.contains("status")) {
+                sql.append(" AND LOWER(status)='active'");
+            }
+            if (meta.columns.contains("role")) {
+                sql.append(" AND LOWER(role)='admin'");
+            }
+            sql.append(" LIMIT 1");
+
+            try (PreparedStatement pst = con.prepareStatement(sql.toString())) {
+                pst.setString(1, adminName);
+                pst.setString(2, adminPassword);
+                try (ResultSet rs = pst.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            return false;
+        }
     }
 
     private void setReceptionistFilter(String filter) {
@@ -4290,13 +4573,37 @@ public class AdminDashboardFrame extends JFrame {
         return (first + " " + middle + " " + last).trim();
     }
 
+    private String buildReceptionistFullName(String firstName, String middleName, String lastName) {
+        String first = firstName == null ? "" : firstName.trim();
+        String middle = middleName == null ? "" : middleName.trim();
+        String last = lastName == null ? "" : lastName.trim();
+        if (middle.isBlank()) {
+            return (first + " " + last).trim();
+        }
+        return (first + " " + middle + " " + last).trim();
+    }
+
     private String validateRequiredPatientNamePart(String fieldLabel, String value) {
         String trimmed = value == null ? "" : value.trim();
         if (trimmed.isBlank()) {
             return fieldLabel + " is required.";
         }
+        if (trimmed.length() < 2) {
+            return fieldLabel + " must be at least 2 letters.";
+        }
         if (!trimmed.matches("[A-Za-z]+")) {
             return fieldLabel + " must contain letters only. Numbers and special characters are not allowed.";
+        }
+        return null;
+    }
+
+    private String validateLettersAndSpacesField(String fieldLabel, String value, boolean required) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isBlank()) {
+            return required ? fieldLabel + " is required." : null;
+        }
+        if (!trimmed.matches("[A-Za-z ]+")) {
+            return fieldLabel + " must contain letters and spaces only. Numbers and special characters are not allowed.";
         }
         return null;
     }
@@ -4305,6 +4612,9 @@ public class AdminDashboardFrame extends JFrame {
         String trimmed = value == null ? "" : value.trim();
         if (trimmed.isBlank()) {
             return null;
+        }
+        if (trimmed.length() < 2) {
+            return fieldLabel + " must be at least 2 letters when provided.";
         }
         if (!trimmed.matches("[A-Za-z]+")) {
             return fieldLabel + " must contain letters only when provided. Numbers and special characters are not allowed.";
@@ -4550,6 +4860,9 @@ public class AdminDashboardFrame extends JFrame {
         }
         if (normalized.length() != 11) {
             return fieldLabel + " must be exactly 11 digits.";
+        }
+        if (!normalized.startsWith("09")) {
+            return fieldLabel + " must start with 09.";
         }
         return null;
     }
@@ -5037,6 +5350,18 @@ public class AdminDashboardFrame extends JFrame {
         return scrollPane;
     }
 
+    private JPanel horizontalScrollHintPanel() {
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setOpaque(false);
+        wrapper.setBorder(BorderFactory.createEmptyBorder(0, 4, 10, 4));
+
+        JLabel hint = new JLabel("Scroll horizontally to view more details.");
+        hint.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        hint.setForeground(new Color(108, 121, 146));
+        wrapper.add(hint, BorderLayout.WEST);
+        return wrapper;
+    }
+
     private JScrollPane dashboardTodayRowsScrollPane(JPanel rowsPanel) {
         JScrollPane scrollPane = new JScrollPane(rowsPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
@@ -5103,6 +5428,19 @@ public class AdminDashboardFrame extends JFrame {
         stack.add(descLabel);
 
         wrapper.add(stack, new GridBagConstraints());
+        return wrapper;
+    }
+
+    private JPanel logEmptyStatePanel() {
+        JPanel wrapper = new JPanel(new GridBagLayout());
+        wrapper.setOpaque(false);
+        wrapper.setBorder(BorderFactory.createEmptyBorder(28, 0, 28, 0));
+
+        JLabel message = new JLabel("No logs available.");
+        message.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        message.setForeground(new Color(88, 103, 131));
+        message.setHorizontalAlignment(SwingConstants.CENTER);
+        wrapper.add(message, new GridBagConstraints());
         return wrapper;
     }
 
