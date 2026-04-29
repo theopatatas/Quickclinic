@@ -65,6 +65,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.sql.Types;
 import quickclinic.DBConnection;
 
 public class AdminDashboardFrame extends JFrame {
@@ -108,6 +109,15 @@ public class AdminDashboardFrame extends JFrame {
         110  // Actions
     };
     private static final int PATIENT_TABLE_TOTAL_WIDTH = 1120;
+    private static final int[] RECEPTIONIST_TABLE_COLUMN_WIDTHS = {
+        150, // Account ID
+        230, // Name
+        220, // Username
+        170, // Created
+        130, // Status
+        150  // Actions
+    };
+    private static final int RECEPTIONIST_TABLE_TOTAL_WIDTH = 1200;
     private static final int TABLE_SCROLL_HEIGHT =
         (TABLE_VISIBLE_ROWS * TABLE_ROW_HEIGHT) + ((TABLE_VISIBLE_ROWS - 1) * TABLE_ROW_GAP) + 20;
     private static final Color INPUT_BORDER_COLOR = new Color(210, 220, 236);
@@ -946,12 +956,18 @@ public class AdminDashboardFrame extends JFrame {
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBorder(BorderFactory.createEmptyBorder(22, 0, 0, 0));
 
-        JPanel stats = new JPanel(new GridLayout(2, 2, 18, 18));
+        int statsRows = receptionistMode ? 1 : 2;
+        int statsCols = receptionistMode ? 3 : 2;
+        JPanel stats = new JPanel(new GridLayout(statsRows, statsCols, 18, 18));
         stats.setOpaque(false);
         stats.add(statCard("Today's Appointments", valLabel(out -> dashboardTodayValue = out), "No appointments today", new Color(63, 101, 228), new Color(236, 240, 250)));
         stats.add(statCard("Pending", valLabel(out -> dashboardPendingValue = out), "Appointments pending", new Color(235, 153, 45), new Color(248, 240, 229)));
         stats.add(statCard("Completed", valLabel(out -> dashboardCompletedValue = out), "Appointments completed", new Color(46, 174, 102), new Color(232, 246, 238)));
-        stats.add(statCard("Receptionist Accounts", valLabel(out -> dashboardReceptionistsValue = out), "Total receptionist accounts", new Color(120, 80, 218), new Color(241, 234, 251)));
+        if (!receptionistMode) {
+            stats.add(statCard("Receptionist Accounts", valLabel(out -> dashboardReceptionistsValue = out), "Total receptionist accounts", new Color(120, 80, 218), new Color(241, 234, 251)));
+        } else {
+            dashboardReceptionistsValue = null;
+        }
 
         RoundedPanel appointments = sectionCard();
         appointments.setLayout(new BorderLayout());
@@ -1224,7 +1240,7 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private JPanel buildPatientsView() {
-        JPanel header = viewHeader("Patients", "Manage patient records", "+  Add Patient", this::openAddPatientDialog);
+        JPanel header = viewHeader("Patients", "Manage patient records", "+  Add Appointment", this::openAddAppointmentDialog);
 
         JPanel body = new JPanel();
         body.setOpaque(false);
@@ -1465,17 +1481,23 @@ public class AdminDashboardFrame extends JFrame {
         receptionistRows = new JPanel();
         receptionistRows.setOpaque(false);
         receptionistRows.setLayout(new BoxLayout(receptionistRows, BoxLayout.Y_AXIS));
+        receptionistRows.putClientProperty("qc.tableWidth", RECEPTIONIST_TABLE_TOTAL_WIDTH);
+        receptionistRows.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 10));
+        receptionistRows.setPreferredSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
 
-        JPanel headerRow = dashboardStyleTableHeader(
-            "Account ID",
-            "Receptionist / Username",
-            "Status / Actions",
-            138,
-            320
-        );
+        JPanel headerRow = receptionistTableHeaderRow();
+        JScrollPane receptionistScroll = tableRowsScrollPane(receptionistRows, true);
+        receptionistScroll.setColumnHeaderView(headerRow);
+        receptionistScroll.getColumnHeader().setOpaque(false);
+        receptionistScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
+        JPanel receptionistHeaderCorner = new JPanel();
+        receptionistHeaderCorner.setOpaque(false);
+        receptionistScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, receptionistHeaderCorner);
+        receptionistScroll.getVerticalScrollBar().setUnitIncrement(22);
+        receptionistScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
 
-        tableCard.add(headerRow, BorderLayout.NORTH);
-        tableCard.add(tableRowsScrollPane(receptionistRows), BorderLayout.CENTER);
+        tableCard.add(horizontalScrollHintPanel(), BorderLayout.NORTH);
+        tableCard.add(receptionistScroll, BorderLayout.CENTER);
 
         body.add(summary);
         body.add(Box.createVerticalStrut(18));
@@ -1868,6 +1890,63 @@ public class AdminDashboardFrame extends JFrame {
         applyDefaultFieldBorder(field);
     }
 
+    private JPanel landscapeFormPanel(String[] labels, JComponent[] fields, int columns, int preferredWidth) {
+        if (labels == null || fields == null || labels.length != fields.length || labels.length == 0) {
+            return new JPanel();
+        }
+
+        int safeColumns = Math.max(1, columns);
+        int rows = (labels.length + safeColumns - 1) / safeColumns;
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 12));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.0;
+        gbc.insets = new Insets(0, 0, 12, 0);
+
+        for (int i = 0; i < labels.length; i++) {
+            int row = i / safeColumns;
+            int col = i % safeColumns;
+            gbc.gridx = col;
+            gbc.gridy = row;
+            gbc.insets = new Insets(0, col == 0 ? 0 : 12, 12, 0);
+            form.add(landscapeFieldBlock(labels[i], fields[i]), gbc);
+        }
+
+        int preferredHeight = Math.max(220, (rows * 86) + 30);
+        form.setPreferredSize(new Dimension(preferredWidth, preferredHeight));
+        form.setMinimumSize(new Dimension(Math.max(560, preferredWidth - 80), preferredHeight));
+        return form;
+    }
+
+    private JPanel landscapeFieldBlock(String labelText, JComponent field) {
+        JPanel block = new JPanel();
+        block.setOpaque(false);
+        block.setLayout(new BoxLayout(block, BoxLayout.Y_AXIS));
+
+        JLabel label = new JLabel(labelText);
+        label.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        label.setForeground(new Color(52, 64, 91));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+        label.setLabelFor(field);
+
+        field.setAlignmentX(Component.LEFT_ALIGNMENT);
+        if (field.getPreferredSize() != null) {
+            int height = Math.max(40, field.getPreferredSize().height);
+            field.setPreferredSize(new Dimension(320, height));
+            field.setMinimumSize(new Dimension(220, height));
+            field.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+        }
+
+        block.add(label);
+        block.add(field);
+        return block;
+    }
+
     private void refreshAppointmentCalendarHeader() {
         if (appointmentCalendarDatePicker != null) {
             java.util.Date pickerDate = appointmentCalendarDatePicker.getDate();
@@ -1913,95 +1992,294 @@ public class AdminDashboardFrame extends JFrame {
     private void ensureClinicTables(Connection con) throws SQLException {
         try (Statement st = con.createStatement()) {
             st.executeUpdate(
-                "CREATE TABLE IF NOT EXISTS patients (" +
-                "id INT AUTO_INCREMENT PRIMARY KEY, " +
-                "patient_code VARCHAR(20) UNIQUE, " +
-                "full_name VARCHAR(120) NOT NULL, " +
-                "contact_number VARCHAR(40) NOT NULL, " +
+                "CREATE TABLE IF NOT EXISTS patient (" +
+                "patient_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                "first_name VARCHAR(80) NOT NULL, " +
+                "middle_name VARCHAR(80) NULL, " +
+                "last_name VARCHAR(80) NOT NULL, " +
+                "contact_number VARCHAR(40) NULL, " +
                 "emergency_contact_number VARCHAR(40) NULL, " +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
             );
             st.executeUpdate(
-                "CREATE TABLE IF NOT EXISTS appointments (" +
-                "id INT AUTO_INCREMENT PRIMARY KEY, " +
-                "patient_name VARCHAR(120) NOT NULL, " +
+                "CREATE TABLE IF NOT EXISTS dentist (" +
+                "dentist_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                "first_name VARCHAR(80) NOT NULL, " +
+                "middle_name VARCHAR(80) NULL, " +
+                "last_name VARCHAR(80) NOT NULL)"
+            );
+            st.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS appointment (" +
+                "appointment_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                "patient_id INT NULL, " +
+                "dentist_id INT NULL, " +
                 "appointment_date DATE NOT NULL, " +
                 "appointment_time TIME NOT NULL, " +
-                "reason VARCHAR(255) NOT NULL, " +
-                "allergies VARCHAR(255) NOT NULL DEFAULT 'N/A', " +
-                "notes VARCHAR(500) NULL, " +
-                "status VARCHAR(20) NOT NULL DEFAULT 'pending', " +
                 "cancel_reason VARCHAR(255) DEFAULT '-', " +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                "allergies VARCHAR(255) NULL, " +
+                "status ENUM('pending','completed','cancelled') NOT NULL DEFAULT 'pending', " +
+                "reason VARCHAR(255) NOT NULL, " +
+                "notes VARCHAR(500) NULL)"
             );
             st.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS account (" +
-                "id INT AUTO_INCREMENT PRIMARY KEY, " +
+                "account_id INT AUTO_INCREMENT PRIMARY KEY, " +
                 "username VARCHAR(80) NOT NULL UNIQUE, " +
                 "password VARCHAR(255) NOT NULL, " +
-                "full_name VARCHAR(120) NULL, " +
-                "role VARCHAR(40) NULL, " +
-                "status VARCHAR(20) NOT NULL DEFAULT 'active', " +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                "role ENUM('admin','receptionist') NULL, " +
+                "status ENUM('active','deactivated') NOT NULL DEFAULT 'active')"
             );
         }
         ensurePatientTableStructure(con);
+        ensureDentistTableStructure(con);
         ensureAppointmentTableStructure(con);
+        ensureAccountTableStructure(con);
+        ensureAppointmentForeignKeys(con);
     }
 
     private void ensurePatientTableStructure(Connection con) throws SQLException {
-        Set<String> patientColumns = getTableColumns(con, "patients");
+        Set<String> patientColumns = getTableColumns(con, "patient");
+        if (!patientColumns.contains("first_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE patient ADD COLUMN first_name VARCHAR(80) NULL");
+            }
+        }
+        patientColumns = getTableColumns(con, "patient");
+        if (!patientColumns.contains("middle_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE patient ADD COLUMN middle_name VARCHAR(80) NULL");
+            }
+        }
+        patientColumns = getTableColumns(con, "patient");
+        if (!patientColumns.contains("last_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE patient ADD COLUMN last_name VARCHAR(80) NULL");
+            }
+        }
+        patientColumns = getTableColumns(con, "patient");
+        if (!patientColumns.contains("contact_number")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE patient ADD COLUMN contact_number VARCHAR(40) NULL");
+            }
+        }
+        patientColumns = getTableColumns(con, "patient");
         if (!patientColumns.contains("emergency_contact_number")) {
             try (Statement st = con.createStatement()) {
-                st.executeUpdate("ALTER TABLE patients ADD COLUMN emergency_contact_number VARCHAR(40) NULL");
+                st.executeUpdate("ALTER TABLE patient ADD COLUMN emergency_contact_number VARCHAR(40) NULL");
+            }
+        }
+        patientColumns = getTableColumns(con, "patient");
+        if (patientColumns.contains("full_name")) {
+            migrateLegacyPatientFullNameData(con);
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE patient DROP COLUMN full_name");
+            } catch (SQLException ignored) {
+                // Keep compatibility if column cannot be dropped.
             }
         }
 
         try (Statement st = con.createStatement()) {
             st.executeUpdate(
-                "UPDATE patients SET emergency_contact_number=NULL " +
+                "UPDATE patient SET emergency_contact_number=NULL " +
                 "WHERE emergency_contact_number IS NOT NULL " +
                 "AND (TRIM(emergency_contact_number)='' OR TRIM(emergency_contact_number)='-')"
             );
+            st.executeUpdate(
+                "UPDATE patient SET first_name='Unknown' " +
+                "WHERE first_name IS NULL OR TRIM(first_name)=''"
+            );
+            st.executeUpdate(
+                "UPDATE patient SET last_name='Unknown' " +
+                "WHERE last_name IS NULL OR TRIM(last_name)=''"
+            );
         }
 
-        ensureUniqueIndexIfPossible(con, "patients", "uq_patients_contact_number", "contact_number");
-        ensureUniqueIndexIfPossible(con, "patients", "uq_patients_emergency_contact_number", "emergency_contact_number");
+        ensureUniqueIndexIfPossible(con, "patient", "uq_patient_contact_number", "contact_number");
+        ensureUniqueIndexIfPossible(con, "patient", "uq_patient_emergency_contact_number", "emergency_contact_number");
+    }
+
+    private void ensureDentistTableStructure(Connection con) throws SQLException {
+        Set<String> dentistColumns = getTableColumns(con, "dentist");
+        if (!dentistColumns.contains("first_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE dentist ADD COLUMN first_name VARCHAR(80) NOT NULL DEFAULT 'Unknown'");
+            }
+        }
+        dentistColumns = getTableColumns(con, "dentist");
+        if (!dentistColumns.contains("middle_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE dentist ADD COLUMN middle_name VARCHAR(80) NULL");
+            }
+        }
+        dentistColumns = getTableColumns(con, "dentist");
+        if (!dentistColumns.contains("last_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE dentist ADD COLUMN last_name VARCHAR(80) NOT NULL DEFAULT 'Unknown'");
+            }
+        }
+    }
+
+    private void migrateLegacyPatientFullNameData(Connection con) throws SQLException {
+        String selectSql = "SELECT patient_id, full_name, first_name, middle_name, last_name FROM patient";
+        String updateSql = "UPDATE patient SET first_name=?, middle_name=?, last_name=? WHERE patient_id=?";
+        try (PreparedStatement select = con.prepareStatement(selectSql);
+             ResultSet rs = select.executeQuery();
+             PreparedStatement update = con.prepareStatement(updateSql)) {
+            while (rs.next()) {
+                String currentFirst = safeText(rs.getString("first_name"), "").trim();
+                String currentMiddle = safeText(rs.getString("middle_name"), "").trim();
+                String currentLast = safeText(rs.getString("last_name"), "").trim();
+                String legacyFullName = safeText(rs.getString("full_name"), "").trim();
+                if (legacyFullName.isBlank()) {
+                    continue;
+                }
+                if (!currentFirst.isBlank() && !currentLast.isBlank()) {
+                    continue;
+                }
+                String[] parts = splitPatientNameParts(legacyFullName);
+                String firstName = safeText(parts[0], "").trim();
+                String middleName = safeText(parts[1], "").trim();
+                String lastName = safeText(parts[2], "").trim();
+                if (firstName.isBlank()) {
+                    firstName = legacyFullName;
+                }
+                if (lastName.isBlank()) {
+                    lastName = "Unknown";
+                }
+                update.setString(1, firstName);
+                if (middleName.isBlank()) {
+                    update.setNull(2, Types.VARCHAR);
+                } else {
+                    update.setString(2, middleName);
+                }
+                update.setString(3, lastName);
+                update.setInt(4, rs.getInt("patient_id"));
+                update.addBatch();
+            }
+            update.executeBatch();
+        }
     }
 
     private void ensureAppointmentTableStructure(Connection con) throws SQLException {
-        Set<String> appointmentColumns = getTableColumns(con, "appointments");
+        Set<String> appointmentColumns = getTableColumns(con, "appointment");
+        if (!appointmentColumns.contains("patient_id")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN patient_id INT NULL");
+            }
+            appointmentColumns = getTableColumns(con, "appointment");
+        }
+        if (!appointmentColumns.contains("dentist_id")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN dentist_id INT NULL");
+            }
+            appointmentColumns = getTableColumns(con, "appointment");
+        }
         if (!appointmentColumns.contains("allergies")) {
             try (Statement st = con.createStatement()) {
-                st.executeUpdate("ALTER TABLE appointments ADD COLUMN allergies VARCHAR(255) NOT NULL DEFAULT 'N/A'");
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN allergies VARCHAR(255) NULL");
             }
-            appointmentColumns = getTableColumns(con, "appointments");
+            appointmentColumns = getTableColumns(con, "appointment");
         }
         if (!appointmentColumns.contains("notes")) {
             try (Statement st = con.createStatement()) {
-                st.executeUpdate("ALTER TABLE appointments ADD COLUMN notes VARCHAR(500) NULL");
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN notes VARCHAR(500) NULL");
             }
-            appointmentColumns = getTableColumns(con, "appointments");
+            appointmentColumns = getTableColumns(con, "appointment");
         }
         if (!appointmentColumns.contains("status")) {
             try (Statement st = con.createStatement()) {
-                st.executeUpdate("ALTER TABLE appointments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'pending'");
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'pending'");
+            }
+        }
+        appointmentColumns = getTableColumns(con, "appointment");
+        if (!appointmentColumns.contains("cancel_reason")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN cancel_reason VARCHAR(255) DEFAULT '-'");
+            }
+        }
+        appointmentColumns = getTableColumns(con, "appointment");
+        if (!appointmentColumns.contains("reason")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE appointment ADD COLUMN reason VARCHAR(255) NOT NULL DEFAULT ''");
             }
         }
 
         try (Statement st = con.createStatement()) {
             st.executeUpdate(
-                "UPDATE appointments SET allergies='N/A' " +
+                "UPDATE appointment SET allergies='N/A' " +
                 "WHERE allergies IS NULL OR TRIM(allergies)=''"
             );
             st.executeUpdate(
-                "UPDATE appointments SET status='pending' " +
+                "UPDATE appointment SET status='pending' " +
                 "WHERE status IS NULL OR TRIM(status)=''"
             );
             st.executeUpdate(
-                "UPDATE appointments SET notes='' " +
+                "UPDATE appointment SET notes='' " +
                 "WHERE notes IS NULL"
             );
+            st.executeUpdate(
+                "UPDATE appointment a LEFT JOIN patient p ON p.patient_id = a.patient_id " +
+                "SET a.patient_id=NULL WHERE a.patient_id IS NOT NULL AND p.patient_id IS NULL"
+            );
+            st.executeUpdate(
+                "UPDATE appointment a LEFT JOIN dentist d ON d.dentist_id = a.dentist_id " +
+                "SET a.dentist_id=NULL WHERE a.dentist_id IS NOT NULL AND d.dentist_id IS NULL"
+            );
+        }
+    }
+
+    private void ensureAccountTableStructure(Connection con) throws SQLException {
+        Set<String> accountColumns = getTableColumns(con, "account");
+        if (!accountColumns.contains("username")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE account ADD COLUMN username VARCHAR(80) NULL");
+            }
+        }
+        accountColumns = getTableColumns(con, "account");
+        if (!accountColumns.contains("password")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE account ADD COLUMN password VARCHAR(255) NULL");
+            }
+        }
+        accountColumns = getTableColumns(con, "account");
+        if (!accountColumns.contains("role")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE account ADD COLUMN role ENUM('admin','receptionist') NULL");
+            }
+        }
+        accountColumns = getTableColumns(con, "account");
+        if (!accountColumns.contains("status")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE account ADD COLUMN status ENUM('active','deactivated') NOT NULL DEFAULT 'active'");
+            }
+        }
+    }
+
+    private void ensureAppointmentForeignKeys(Connection con) throws SQLException {
+        if (!hasForeignKey(con, "appointment", "fk_appointment_patient")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate(
+                    "ALTER TABLE appointment " +
+                    "ADD CONSTRAINT fk_appointment_patient " +
+                    "FOREIGN KEY (patient_id) REFERENCES patient(patient_id) " +
+                    "ON UPDATE CASCADE ON DELETE SET NULL"
+                );
+            } catch (SQLException ignored) {
+                // Keep app operational even if FK cannot be applied in existing environments.
+            }
+        }
+        if (!hasForeignKey(con, "appointment", "fk_appointment_dentist")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate(
+                    "ALTER TABLE appointment " +
+                    "ADD CONSTRAINT fk_appointment_dentist " +
+                    "FOREIGN KEY (dentist_id) REFERENCES dentist(dentist_id) " +
+                    "ON UPDATE CASCADE ON DELETE SET NULL"
+                );
+            } catch (SQLException ignored) {
+                // Keep app operational even if FK cannot be applied in existing environments.
+            }
         }
     }
 
@@ -2029,6 +2307,19 @@ public class AdminDashboardFrame extends JFrame {
         return false;
     }
 
+    private boolean hasForeignKey(Connection con, String tableName, String fkName) throws SQLException {
+        DatabaseMetaData meta = con.getMetaData();
+        try (ResultSet rs = meta.getImportedKeys(con.getCatalog(), null, tableName)) {
+            while (rs.next()) {
+                String existing = rs.getString("FK_NAME");
+                if (existing != null && existing.equalsIgnoreCase(fkName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private boolean hasDuplicateNonBlankValues(Connection con, String tableName, String columnName) throws SQLException {
         String sql = "SELECT 1 FROM " + tableName +
             " WHERE " + columnName + " IS NOT NULL AND TRIM(" + columnName + ") <> '' " +
@@ -2041,8 +2332,9 @@ public class AdminDashboardFrame extends JFrame {
 
     private void normalizeDuplicateTables(Connection con) throws SQLException {
         Set<String> tables = getExistingTables(con);
-        mergePatientLikeTable(con, tables, "patient");
-        mergeAppointmentLikeTable(con, tables, "appointment");
+        mergePatientLikeTable(con, tables, "patients");
+        mergePatientLikeTable(con, tables, "patient_information");
+        mergeAppointmentLikeTable(con, tables, "appointments");
         mergeAccountLikeTable(con, tables, "accounts", null);
         mergeAccountLikeTable(con, tables, "receptionist", "receptionist");
         mergeAccountLikeTable(con, tables, "receptionists", "receptionist");
@@ -2061,47 +2353,74 @@ public class AdminDashboardFrame extends JFrame {
 
     private void mergePatientLikeTable(Connection con, Set<String> tables, String sourceTable) throws SQLException {
         String source = sourceTable.toLowerCase(Locale.ENGLISH);
-        if (!tables.contains(source) || "patients".equals(source)) {
+        if (!tables.contains(source) || "patient".equals(source)) {
             return;
         }
 
         Set<String> srcCols = getTableColumns(con, source);
+        String firstNameCol = firstExisting(srcCols, "first_name", "firstname", "first");
+        String middleNameCol = firstExisting(srcCols, "middle_name", "middlename", "middle", "m_name");
+        String lastNameCol = firstExisting(srcCols, "last_name", "lastname", "last", "surname");
         String nameCol = firstExisting(srcCols, "full_name", "name", "patient_name");
         String contactCol = firstExisting(srcCols, "contact_number", "contact", "contact_no", "phone");
         String emergencyCol = firstExisting(srcCols, "emergency_contact_number", "emergency_contact", "emergency_contact_no", "emergency_phone");
-        String codeCol = firstExisting(srcCols, "patient_code", "patient_id", "code");
-        if (nameCol == null || contactCol == null) {
+        if (contactCol == null || (nameCol == null && firstNameCol == null)) {
             return;
         }
 
-        String sql = "SELECT `" + nameCol + "` AS full_name, `" + contactCol + "` AS contact_number" +
+        String sql =
+            "SELECT " +
+            (firstNameCol != null ? "`" + firstNameCol + "` AS first_name, " : "") +
+            (middleNameCol != null ? "`" + middleNameCol + "` AS middle_name, " : "") +
+            (lastNameCol != null ? "`" + lastNameCol + "` AS last_name, " : "") +
+            (nameCol != null ? "`" + nameCol + "` AS full_name, " : "") +
+            "`" + contactCol + "` AS contact_number" +
             (emergencyCol != null ? ", `" + emergencyCol + "` AS emergency_contact_number" : "") +
-            (codeCol != null ? ", `" + codeCol + "` AS patient_code" : "") +
             " FROM `" + source + "`";
-        int fallbackSeq = 1;
+
         try (Statement read = con.createStatement();
              ResultSet rs = read.executeQuery(sql);
              PreparedStatement insert = con.prepareStatement(
-                 "INSERT INTO patients (patient_code, full_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?)"
+                 "INSERT INTO patient (first_name, middle_name, last_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?, ?)"
              )) {
             while (rs.next()) {
-                String fullName = rs.getString("full_name");
+                String firstName = firstNameCol == null ? "" : safeText(rs.getString("first_name"), "").trim();
+                String middleName = middleNameCol == null ? "" : safeText(rs.getString("middle_name"), "").trim();
+                String lastName = lastNameCol == null ? "" : safeText(rs.getString("last_name"), "").trim();
+                String fullName = nameCol == null ? "" : safeText(rs.getString("full_name"), "").trim();
                 String contact = rs.getString("contact_number");
-                if (fullName == null || fullName.isBlank() || contact == null || contact.isBlank()) {
-                    continue;
+                if ((firstName.isBlank() || lastName.isBlank()) && !fullName.isBlank()) {
+                    String[] parts = splitPatientNameParts(fullName);
+                    firstName = safeText(parts[0], "").trim();
+                    middleName = safeText(parts[1], "").trim();
+                    lastName = safeText(parts[2], "").trim();
+                    if (firstName.isBlank()) {
+                        firstName = fullName;
+                    }
+                    if (lastName.isBlank()) {
+                        lastName = "Unknown";
+                    }
                 }
-                String code = codeCol == null ? null : rs.getString("patient_code");
-                if (code == null || code.isBlank()) {
-                    code = String.format("PT-MIG-%04d", fallbackSeq++);
+                if (firstName.isBlank() || lastName.isBlank() || contact == null || contact.isBlank()) {
+                    continue;
                 }
                 String emergencyContact = emergencyCol == null ? null : rs.getString("emergency_contact_number");
                 if (emergencyContact != null && emergencyContact.isBlank()) {
                     emergencyContact = null;
                 }
-                insert.setString(1, code);
-                insert.setString(2, fullName.trim());
-                insert.setString(3, contact.trim());
-                insert.setString(4, emergencyContact == null ? null : emergencyContact.trim());
+                insert.setString(1, firstName);
+                if (middleName.isBlank()) {
+                    insert.setNull(2, Types.VARCHAR);
+                } else {
+                    insert.setString(2, middleName);
+                }
+                insert.setString(3, lastName);
+                insert.setString(4, contact.trim());
+                if (emergencyContact == null) {
+                    insert.setNull(5, Types.VARCHAR);
+                } else {
+                    insert.setString(5, emergencyContact.trim());
+                }
                 try {
                     insert.executeUpdate();
                 } catch (SQLException ignored) {
@@ -2115,7 +2434,7 @@ public class AdminDashboardFrame extends JFrame {
 
     private void mergeAppointmentLikeTable(Connection con, Set<String> tables, String sourceTable) throws SQLException {
         String source = sourceTable.toLowerCase(Locale.ENGLISH);
-        if (!tables.contains(source) || "appointments".equals(source)) {
+        if (!tables.contains(source) || "appointment".equals(source)) {
             return;
         }
 
@@ -2126,6 +2445,8 @@ public class AdminDashboardFrame extends JFrame {
         String reasonCol = firstExisting(srcCols, "reason", "purpose");
         String allergiesCol = firstExisting(srcCols, "allergies", "allergy");
         String notesCol = firstExisting(srcCols, "notes", "note");
+        String contactCol = firstExisting(srcCols, "contact_number", "contact", "contact_no", "phone");
+        String emergencyCol = firstExisting(srcCols, "emergency_contact_number", "emergency_contact", "emergency_contact_no", "emergency_phone");
         String statusCol = firstExisting(srcCols, "status");
         String cancelCol = firstExisting(srcCols, "cancel_reason", "cancellation_reason");
         if (patientCol == null || dateCol == null || timeCol == null || reasonCol == null) {
@@ -2136,14 +2457,16 @@ public class AdminDashboardFrame extends JFrame {
             "`" + timeCol + "` AS appointment_time, `" + reasonCol + "` AS reason" +
             (allergiesCol != null ? ", `" + allergiesCol + "` AS allergies" : "") +
             (notesCol != null ? ", `" + notesCol + "` AS notes" : "") +
+            (contactCol != null ? ", `" + contactCol + "` AS contact_number" : "") +
+            (emergencyCol != null ? ", `" + emergencyCol + "` AS emergency_contact_number" : "") +
             (statusCol != null ? ", `" + statusCol + "` AS status" : "") +
             (cancelCol != null ? ", `" + cancelCol + "` AS cancel_reason" : "") +
             " FROM `" + source + "`";
         try (Statement read = con.createStatement();
              ResultSet rs = read.executeQuery(sql);
              PreparedStatement insert = con.prepareStatement(
-                 "INSERT INTO appointments (patient_name, appointment_date, appointment_time, reason, allergies, notes, status, cancel_reason) " +
-                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                 "INSERT INTO appointment (patient_id, dentist_id, appointment_date, appointment_time, cancel_reason, allergies, status, reason, notes) " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
              )) {
             while (rs.next()) {
                 String patient = rs.getString("patient_name");
@@ -2166,15 +2489,29 @@ public class AdminDashboardFrame extends JFrame {
                 if (notes == null) {
                     notes = "";
                 }
+                String contact = contactCol == null ? "" : rs.getString("contact_number");
+                if (contact == null) {
+                    contact = "";
+                }
+                String emergencyContact = emergencyCol == null ? "" : rs.getString("emergency_contact_number");
+                if (emergencyContact == null) {
+                    emergencyContact = "";
+                }
+                Integer patientId = ensurePatientExistsForAppointment(con, patient.trim(), contact.trim(), emergencyContact.trim());
 
-                insert.setString(1, patient.trim());
-                insert.setDate(2, Date.valueOf(date));
-                insert.setTime(3, Time.valueOf(time.withSecond(0).withNano(0)));
-                insert.setString(4, reason.trim());
-                insert.setString(5, allergies.trim());
-                insert.setString(6, notes.trim());
+                if (patientId == null) {
+                    insert.setNull(1, Types.INTEGER);
+                } else {
+                    insert.setInt(1, patientId);
+                }
+                insert.setNull(2, Types.INTEGER);
+                insert.setDate(3, Date.valueOf(date));
+                insert.setTime(4, Time.valueOf(time.withSecond(0).withNano(0)));
+                insert.setString(5, cancelReason);
+                insert.setString(6, allergies.trim());
                 insert.setString(7, status);
-                insert.setString(8, cancelReason);
+                insert.setString(8, reason.trim());
+                insert.setString(9, notes.trim());
                 try {
                     insert.executeUpdate();
                 } catch (SQLException ignored) {
@@ -2387,16 +2724,13 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void loadPatientsFromDatabase(Connection con) throws SQLException {
-        String sql = "SELECT id, patient_code, full_name, contact_number, emergency_contact_number " +
-            "FROM patients ORDER BY id DESC";
+        String sql = "SELECT patient_id, first_name, middle_name, last_name, contact_number, emergency_contact_number " +
+            "FROM patient ORDER BY patient_id DESC";
         try (PreparedStatement pst = con.prepareStatement(sql);
              ResultSet rs = pst.executeQuery()) {
             while (rs.next()) {
-                int id = rs.getInt("id");
-                String code = rs.getString("patient_code");
-                if (code == null || code.isBlank()) {
-                    code = String.format("PT-%04d", id);
-                }
+                int id = rs.getInt("patient_id");
+                String code = String.format("PT-%04d", id);
                 String emergencyContact = rs.getString("emergency_contact_number");
                 if (emergencyContact == null) {
                     emergencyContact = "";
@@ -2404,7 +2738,9 @@ public class AdminDashboardFrame extends JFrame {
                 patientRecords.add(new PatientRecord(
                     id,
                     code,
-                    rs.getString("full_name"),
+                    rs.getString("first_name"),
+                    rs.getString("middle_name"),
+                    rs.getString("last_name"),
                     rs.getString("contact_number"),
                     emergencyContact
                 ));
@@ -2413,15 +2749,25 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void loadAppointmentsFromDatabase(Connection con) throws SQLException {
-        String sql = "SELECT id, patient_name, appointment_date, appointment_time, reason, " +
-                     "COALESCE(NULLIF(TRIM(allergies), ''), 'N/A') AS allergies, " +
-                     "COALESCE(notes, '') AS notes, status, " +
-                     "COALESCE(cancel_reason, '-') AS cancel_reason " +
-                     "FROM appointments ORDER BY appointment_date DESC, appointment_time DESC";
+        String sql = "SELECT a.appointment_id, a.patient_id, " +
+                     "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', " +
+                     "NULLIF(TRIM(p.first_name), ''), " +
+                     "NULLIF(TRIM(p.middle_name), ''), " +
+                     "NULLIF(TRIM(p.last_name), '')" +
+                     ")), ''), '(No patient)') AS linked_patient_name, " +
+                     "COALESCE(NULLIF(TRIM(p.contact_number), ''), '') AS linked_contact_number, " +
+                     "COALESCE(NULLIF(TRIM(p.emergency_contact_number), ''), '') AS linked_emergency_contact_number, " +
+                     "a.appointment_date, a.appointment_time, a.reason, " +
+                     "COALESCE(NULLIF(TRIM(a.allergies), ''), 'N/A') AS allergies, " +
+                     "COALESCE(a.notes, '') AS notes, a.status, " +
+                     "COALESCE(a.cancel_reason, '-') AS cancel_reason " +
+                     "FROM appointment a " +
+                     "LEFT JOIN patient p ON p.patient_id = a.patient_id " +
+                     "ORDER BY a.appointment_date DESC, a.appointment_time DESC";
         try (PreparedStatement pst = con.prepareStatement(sql);
              ResultSet rs = pst.executeQuery()) {
             while (rs.next()) {
-                int id = rs.getInt("id");
+                int id = rs.getInt("appointment_id");
                 Date dateValue = rs.getDate("appointment_date");
                 Time timeValue = rs.getTime("appointment_time");
                 LocalDate appointmentDate = dateValue == null ? LocalDate.now() : dateValue.toLocalDate();
@@ -2435,7 +2781,8 @@ public class AdminDashboardFrame extends JFrame {
                 }
                 appointmentRecords.add(new AppointmentRecord(
                     id,
-                    rs.getString("patient_name"),
+                    rs.getObject("patient_id") == null ? -1 : rs.getInt("patient_id"),
+                    rs.getString("linked_patient_name"),
                     appointmentDate.format(DATE_LABEL_FORMAT),
                     appointmentTime.format(APPOINTMENT_INPUT_TIME_FORMAT),
                     rs.getString("reason"),
@@ -2443,6 +2790,8 @@ public class AdminDashboardFrame extends JFrame {
                     rs.getString("notes"),
                     status,
                     cancelReason,
+                    rs.getString("linked_contact_number"),
+                    rs.getString("linked_emergency_contact_number"),
                     appointmentDate,
                     appointmentTime
                 ));
@@ -2525,8 +2874,197 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
+    private AppointmentRecord fetchAppointmentRecordById(int appointmentId) {
+        String sql = "SELECT a.appointment_id, a.patient_id, " +
+                     "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', " +
+                     "NULLIF(TRIM(p.first_name), ''), " +
+                     "NULLIF(TRIM(p.middle_name), ''), " +
+                     "NULLIF(TRIM(p.last_name), '')" +
+                     ")), ''), '(No patient)') AS linked_patient_name, " +
+                     "COALESCE(NULLIF(TRIM(p.contact_number), ''), '') AS linked_contact_number, " +
+                     "COALESCE(NULLIF(TRIM(p.emergency_contact_number), ''), '') AS linked_emergency_contact_number, " +
+                     "a.appointment_date, a.appointment_time, a.reason, " +
+                     "COALESCE(NULLIF(TRIM(a.allergies), ''), 'N/A') AS allergies, " +
+                     "COALESCE(a.notes, '') AS notes, a.status, " +
+                     "COALESCE(a.cancel_reason, '-') AS cancel_reason " +
+                     "FROM appointment a " +
+                     "LEFT JOIN patient p ON p.patient_id = a.patient_id " +
+                     "WHERE a.appointment_id=? LIMIT 1";
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return null;
+            }
+            ensureClinicTables(con);
+            try (PreparedStatement pst = con.prepareStatement(sql)) {
+                pst.setInt(1, appointmentId);
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (!rs.next()) {
+                        return null;
+                    }
+                    Date dateValue = rs.getDate("appointment_date");
+                    Time timeValue = rs.getTime("appointment_time");
+                    LocalDate appointmentDate = dateValue == null ? LocalDate.now() : dateValue.toLocalDate();
+                    LocalTime appointmentTime = timeValue == null
+                        ? LocalTime.of(9, 0)
+                        : timeValue.toLocalTime().withSecond(0).withNano(0);
+                    String status = normalizeAppointmentStatus(rs.getString("status"));
+                    String cancelReason = rs.getString("cancel_reason");
+                    if (cancelReason == null || cancelReason.isBlank()) {
+                        cancelReason = "-";
+                    }
+                    return new AppointmentRecord(
+                        rs.getInt("appointment_id"),
+                        rs.getObject("patient_id") == null ? -1 : rs.getInt("patient_id"),
+                        rs.getString("linked_patient_name"),
+                        appointmentDate.format(DATE_LABEL_FORMAT),
+                        appointmentTime.format(APPOINTMENT_INPUT_TIME_FORMAT),
+                        rs.getString("reason"),
+                        rs.getString("allergies"),
+                        rs.getString("notes"),
+                        status,
+                        cancelReason,
+                        rs.getString("linked_contact_number"),
+                        rs.getString("linked_emergency_contact_number"),
+                        appointmentDate,
+                        appointmentTime
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private PatientRecord fetchPatientRecordById(int patientId) {
+        String sql = "SELECT patient_id, first_name, middle_name, last_name, contact_number, emergency_contact_number " +
+                     "FROM patient WHERE patient_id=? LIMIT 1";
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return null;
+            }
+            ensureClinicTables(con);
+            try (PreparedStatement pst = con.prepareStatement(sql)) {
+                pst.setInt(1, patientId);
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (!rs.next()) {
+                        return null;
+                    }
+                    int id = rs.getInt("patient_id");
+                    String code = String.format("PT-%04d", id);
+                    String emergencyContact = rs.getString("emergency_contact_number");
+                    if (emergencyContact == null) {
+                        emergencyContact = "";
+                    }
+                    return new PatientRecord(
+                        id,
+                        code,
+                        rs.getString("first_name"),
+                        rs.getString("middle_name"),
+                        rs.getString("last_name"),
+                        rs.getString("contact_number"),
+                        emergencyContact
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private ReceptionistRecord fetchReceptionistRecordForEdit(ReceptionistRecord baseRecord) {
+        if (baseRecord == null) {
+            return null;
+        }
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return null;
+            }
+            ensureClinicTables(con);
+
+            AccountMeta meta = resolveAccountMeta(con);
+            if (!meta.tableExists || !meta.columns.contains("username")) {
+                return null;
+            }
+
+            List<String> selectParts = new ArrayList<>();
+            if (meta.idColumn != null) {
+                selectParts.add(meta.idColumn + " AS account_pk");
+            }
+            selectParts.add("username");
+            if (meta.nameColumn != null) {
+                selectParts.add(meta.nameColumn + " AS display_name");
+            } else {
+                selectParts.add("username AS display_name");
+            }
+            if (meta.columns.contains("status")) {
+                selectParts.add("status");
+            } else {
+                selectParts.add("'active' AS status");
+            }
+            if (meta.createdColumn != null) {
+                selectParts.add(meta.createdColumn + " AS created_value");
+            }
+
+            StringBuilder sql = new StringBuilder("SELECT ");
+            sql.append(String.join(", ", selectParts));
+            sql.append(" FROM account WHERE ");
+            boolean usePk = baseRecord.accountPk > 0 && meta.idColumn != null;
+            sql.append(usePk ? (meta.idColumn + "=?") : "username=?");
+            if (meta.columns.contains("role")) {
+                sql.append(" AND role='receptionist'");
+            } else {
+                sql.append(" AND username <> 'admin'");
+            }
+            sql.append(" LIMIT 1");
+
+            try (PreparedStatement pst = con.prepareStatement(sql.toString())) {
+                if (usePk) {
+                    pst.setInt(1, baseRecord.accountPk);
+                } else {
+                    pst.setString(1, baseRecord.username);
+                }
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (!rs.next()) {
+                        return null;
+                    }
+                    int pk = meta.idColumn == null ? -1 : rs.getInt("account_pk");
+                    String username = rs.getString("username");
+                    String displayName = rs.getString("display_name");
+                    if (displayName == null || displayName.isBlank()) {
+                        displayName = username;
+                    }
+                    String status = normalizeAccountStatus(rs.getString("status"));
+                    String accountCode = pk > 0
+                        ? String.format("RCP-%04d", pk)
+                        : "RCP-" + username.toUpperCase(Locale.ENGLISH);
+                    String createdText = baseRecord.createdText;
+                    if (meta.createdColumn != null) {
+                        Object raw = rs.getObject("created_value");
+                        if (raw instanceof Timestamp) {
+                            Timestamp ts = (Timestamp) raw;
+                            createdText = ts.toLocalDateTime().toLocalDate().format(DATE_LABEL_FORMAT);
+                        } else if (raw instanceof Date) {
+                            Date dt = (Date) raw;
+                            createdText = dt.toLocalDate().format(DATE_LABEL_FORMAT);
+                        } else if (raw != null) {
+                            createdText = String.valueOf(raw);
+                        }
+                    }
+                    return new ReceptionistRecord(pk, accountCode, displayName, username, status, createdText);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     private boolean insertAppointmentToDatabase(
         String patientName,
+        String contactNumber,
+        String emergencyContactNumber,
         LocalDate appointmentDate,
         LocalTime appointmentTime,
         String reason,
@@ -2534,34 +3072,81 @@ public class AdminDashboardFrame extends JFrame {
         String notes
     ) {
         String normalizedPatient = patientName == null ? "" : patientName.trim();
+        String normalizedContact = normalizePhoneNumber(contactNumber);
+        String normalizedEmergencyContact = normalizePhoneNumber(emergencyContactNumber);
         String normalizedReason = reason == null ? "" : reason.trim();
         String normalizedAllergies = allergies == null ? "" : allergies.trim();
         String normalizedNotes = notes == null ? "" : notes.trim();
         if (normalizedPatient.isBlank() || normalizedReason.isBlank() || appointmentDate == null || appointmentTime == null) {
             return false;
         }
+        if (normalizedContact.isBlank() || normalizedEmergencyContact.isBlank()) {
+            return false;
+        }
         if (normalizedAllergies.isBlank()) {
             normalizedAllergies = "N/A";
         }
 
-        String sql = "INSERT INTO appointments (patient_name, appointment_date, appointment_time, reason, allergies, notes, status, cancel_reason) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, 'pending', '-')";
+        String sql = "INSERT INTO appointment (patient_id, dentist_id, appointment_date, appointment_time, cancel_reason, allergies, status, reason, notes) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
                 return false;
             }
             ensureClinicTables(con);
-            if (hasOverlappingAppointment(con, appointmentDate, appointmentTime, APPOINTMENT_DURATION_MINUTES, null)) {
-                return false;
-            }
-            try (PreparedStatement pst = con.prepareStatement(sql)) {
-                pst.setString(1, normalizedPatient);
-                pst.setDate(2, Date.valueOf(appointmentDate));
-                pst.setTime(3, Time.valueOf(appointmentTime.withSecond(0).withNano(0)));
-                pst.setString(4, normalizedReason);
-                pst.setString(5, normalizedAllergies);
-                pst.setString(6, normalizedNotes);
-                return pst.executeUpdate() > 0;
+            boolean originalAutoCommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                if (hasOverlappingAppointment(con, appointmentDate, appointmentTime, APPOINTMENT_DURATION_MINUTES, null)) {
+                    con.rollback();
+                    return false;
+                }
+
+                Integer patientId = ensurePatientExistsForAppointment(
+                    con,
+                    normalizedPatient,
+                    normalizedContact,
+                    normalizedEmergencyContact
+                );
+                if (patientId == null) {
+                    con.rollback();
+                    return false;
+                }
+
+                boolean inserted;
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setInt(1, patientId);
+                    pst.setNull(2, Types.INTEGER);
+                    pst.setDate(3, Date.valueOf(appointmentDate));
+                    pst.setTime(4, Time.valueOf(appointmentTime.withSecond(0).withNano(0)));
+                    pst.setString(5, "-");
+                    pst.setString(6, normalizedAllergies);
+                    pst.setString(7, "pending");
+                    pst.setString(8, normalizedReason);
+                    pst.setString(9, normalizedNotes);
+                    inserted = pst.executeUpdate() > 0;
+                }
+
+                if (!inserted) {
+                    con.rollback();
+                    return false;
+                }
+
+                con.commit();
+                return true;
+            } catch (SQLException e) {
+                try {
+                    con.rollback();
+                } catch (SQLException ignored) {
+                    // Keep original exception.
+                }
+                throw e;
+            } finally {
+                try {
+                    con.setAutoCommit(originalAutoCommit);
+                } catch (SQLException ignored) {
+                    // No-op.
+                }
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -2569,8 +3154,189 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
+    private Integer ensurePatientExistsForAppointment(
+        Connection con,
+        String fullName,
+        String contactNumber,
+        String emergencyContactNumber
+    ) throws SQLException {
+        String normalizedFullName = safeText(fullName, "").trim();
+        String[] nameParts = splitPatientNameParts(normalizedFullName);
+        String firstName = safeText(nameParts[0], "").trim();
+        String middleName = safeText(nameParts[1], "").trim();
+        String lastName = safeText(nameParts[2], "").trim();
+        if (firstName.isBlank() && !normalizedFullName.isBlank()) {
+            firstName = normalizedFullName;
+        }
+        if (lastName.isBlank()) {
+            lastName = "Unknown";
+        }
+        String normalizedContact = normalizePhoneNumber(contactNumber);
+        String normalizedEmergency = normalizePhoneNumber(emergencyContactNumber);
+        boolean allowNameOnlyFallback = normalizedContact.isBlank() && normalizedEmergency.isBlank();
+
+        Integer existingPatientId = findExistingPatientIdForAppointment(
+            con,
+            firstName,
+            middleName,
+            lastName,
+            normalizedContact,
+            normalizedEmergency,
+            allowNameOnlyFallback
+        );
+        if (existingPatientId != null) {
+            return existingPatientId;
+        }
+
+        if (firstName.isBlank() || lastName.isBlank() || normalizedContact.isBlank() || normalizedEmergency.isBlank()) {
+            return null;
+        }
+
+        String sql = "INSERT INTO patient (first_name, middle_name, last_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement pst = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            pst.setString(1, firstName);
+            if (middleName.isBlank()) {
+                pst.setNull(2, Types.VARCHAR);
+            } else {
+                pst.setString(2, middleName);
+            }
+            pst.setString(3, lastName);
+            pst.setString(4, normalizedContact);
+            pst.setString(5, normalizedEmergency);
+            int inserted = pst.executeUpdate();
+            if (inserted <= 0) {
+                return null;
+            }
+            try (ResultSet keys = pst.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+            return findExistingPatientIdForAppointment(
+                con,
+                firstName,
+                middleName,
+                lastName,
+                normalizedContact,
+                normalizedEmergency,
+                allowNameOnlyFallback
+            );
+        } catch (SQLException e) {
+            if (isDuplicateKeyException(e)) {
+                return findExistingPatientIdForAppointment(
+                    con,
+                    firstName,
+                    middleName,
+                    lastName,
+                    normalizedContact,
+                    normalizedEmergency,
+                    allowNameOnlyFallback
+                );
+            }
+            throw e;
+        }
+    }
+
+    private Integer findExistingPatientIdForAppointment(
+        Connection con,
+        String firstName,
+        String middleName,
+        String lastName,
+        String contactNumber,
+        String emergencyContactNumber,
+        boolean allowNameOnlyFallback
+    ) throws SQLException {
+        String normalizedFirst = safeText(firstName, "").trim();
+        String normalizedMiddle = safeText(middleName, "").trim();
+        String normalizedLast = safeText(lastName, "").trim();
+        String normalizedContact = normalizePhoneNumber(contactNumber);
+        String normalizedEmergency = normalizePhoneNumber(emergencyContactNumber);
+
+        if (!normalizedFirst.isBlank() && !normalizedContact.isBlank() && !normalizedEmergency.isBlank()) {
+            String exactSql = "SELECT patient_id FROM patient " +
+                "WHERE LOWER(TRIM(first_name)) = LOWER(TRIM(?)) " +
+                "AND LOWER(TRIM(COALESCE(middle_name, ''))) = LOWER(TRIM(?)) " +
+                "AND LOWER(TRIM(last_name)) = LOWER(TRIM(?)) " +
+                "AND contact_number = ? " +
+                "AND COALESCE(TRIM(emergency_contact_number), '') = ? " +
+                "LIMIT 1";
+            try (PreparedStatement pst = con.prepareStatement(exactSql)) {
+                pst.setString(1, normalizedFirst);
+                pst.setString(2, normalizedMiddle);
+                pst.setString(3, normalizedLast);
+                pst.setString(4, normalizedContact);
+                pst.setString(5, normalizedEmergency);
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt("patient_id");
+                    }
+                }
+            }
+        }
+
+        Integer byContact = findPatientIdByPhone(con, normalizedContact);
+        if (byContact != null) {
+            return byContact;
+        }
+
+        Integer byEmergency = findPatientIdByPhone(con, normalizedEmergency);
+        if (byEmergency != null) {
+            return byEmergency;
+        }
+
+        if (allowNameOnlyFallback && !normalizedFirst.isBlank()) {
+            String nameSql = "SELECT patient_id FROM patient " +
+                "WHERE LOWER(TRIM(first_name)) = LOWER(TRIM(?)) " +
+                "AND LOWER(TRIM(COALESCE(middle_name, ''))) = LOWER(TRIM(?)) " +
+                "AND LOWER(TRIM(last_name)) = LOWER(TRIM(?)) " +
+                "ORDER BY patient_id DESC LIMIT 1";
+            try (PreparedStatement pst = con.prepareStatement(nameSql)) {
+                pst.setString(1, normalizedFirst);
+                pst.setString(2, normalizedMiddle);
+                pst.setString(3, normalizedLast);
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt("patient_id");
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private Integer findPatientIdByPhone(Connection con, String phone) throws SQLException {
+        String normalized = normalizePhoneNumber(phone);
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        String sql = "SELECT patient_id FROM patient WHERE contact_number=? OR emergency_contact_number=? ORDER BY patient_id DESC LIMIT 1";
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.setString(1, normalized);
+            pst.setString(2, normalized);
+            try (ResultSet rs = pst.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("patient_id");
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isDuplicateKeyException(SQLException e) {
+        if (e == null) {
+            return false;
+        }
+        String sqlState = e.getSQLState();
+        if (sqlState != null && sqlState.startsWith("23")) {
+            return true;
+        }
+        return e.getErrorCode() == 1062;
+    }
+
     private boolean updateAppointmentStatusInDatabase(int appointmentId, String newStatus, String cancelReason) {
-        String sql = "UPDATE appointments SET status=?, cancel_reason=? WHERE id=?";
+        String sql = "UPDATE appointment SET status=?, cancel_reason=? WHERE appointment_id=?";
         try (Connection con = DBConnection.getConnection();
              PreparedStatement pst = con == null ? null : con.prepareStatement(sql)) {
             if (con == null || pst == null) {
@@ -2586,6 +3352,145 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
+    private boolean updateAppointmentDetailsInDatabase(
+        int appointmentId,
+        int linkedPatientId,
+        String firstName,
+        String middleName,
+        String lastName,
+        String contactNumber,
+        String emergencyContactNumber,
+        LocalDate appointmentDate,
+        LocalTime appointmentTime,
+        String reason,
+        String allergies,
+        String notes
+    ) {
+        String normalizedFirstName = safeText(firstName, "").trim();
+        String normalizedMiddleName = safeText(middleName, "").trim();
+        String normalizedLastName = safeText(lastName, "").trim();
+        String normalizedContact = normalizePhoneNumber(contactNumber);
+        String normalizedEmergencyContact = normalizePhoneNumber(emergencyContactNumber);
+        String normalizedReason = reason == null ? "" : reason.trim();
+        String normalizedAllergies = allergies == null ? "" : allergies.trim();
+        String normalizedNotes = notes == null ? "" : notes.trim();
+        if (normalizedFirstName.isBlank() || normalizedLastName.isBlank() || normalizedReason.isBlank() || appointmentDate == null || appointmentTime == null) {
+            return false;
+        }
+        if (normalizedContact.isBlank() || normalizedEmergencyContact.isBlank()) {
+            return false;
+        }
+        if (normalizedAllergies.isBlank()) {
+            normalizedAllergies = "N/A";
+        }
+
+        String sql = "UPDATE appointment " +
+                     "SET patient_id=?, appointment_date=?, appointment_time=?, reason=?, allergies=?, notes=? " +
+                     "WHERE appointment_id=?";
+        String updatePatientSql = "UPDATE patient SET first_name=?, middle_name=?, last_name=?, contact_number=?, emergency_contact_number=? WHERE patient_id=?";
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return false;
+            }
+            ensureClinicTables(con);
+            boolean originalAutoCommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                if (hasOverlappingAppointment(con, appointmentDate, appointmentTime, APPOINTMENT_DURATION_MINUTES, appointmentId)) {
+                    con.rollback();
+                    return false;
+                }
+
+                int patientId = linkedPatientId;
+                if (patientId <= 0) {
+                    Integer resolvedPatientId = findLinkedPatientIdForAppointment(con, appointmentId);
+                    patientId = resolvedPatientId == null ? -1 : resolvedPatientId;
+                }
+                if (patientId <= 0) {
+                    con.rollback();
+                    return false;
+                }
+
+                if (patientContactNumberExists(con, normalizedContact, patientId)
+                    || patientContactNumberExists(con, normalizedEmergencyContact, patientId)) {
+                    con.rollback();
+                    return false;
+                }
+
+                boolean patientUpdated;
+                try (PreparedStatement patientPst = con.prepareStatement(updatePatientSql)) {
+                    patientPst.setString(1, normalizedFirstName);
+                    if (normalizedMiddleName.isBlank()) {
+                        patientPst.setNull(2, Types.VARCHAR);
+                    } else {
+                        patientPst.setString(2, normalizedMiddleName);
+                    }
+                    patientPst.setString(3, normalizedLastName);
+                    patientPst.setString(4, normalizedContact);
+                    patientPst.setString(5, normalizedEmergencyContact);
+                    patientPst.setInt(6, patientId);
+                    patientUpdated = patientPst.executeUpdate() > 0;
+                }
+                if (!patientUpdated) {
+                    con.rollback();
+                    return false;
+                }
+
+                boolean updated;
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setInt(1, patientId);
+                    pst.setDate(2, Date.valueOf(appointmentDate));
+                    pst.setTime(3, Time.valueOf(appointmentTime.withSecond(0).withNano(0)));
+                    pst.setString(4, normalizedReason);
+                    pst.setString(5, normalizedAllergies);
+                    pst.setString(6, normalizedNotes);
+                    pst.setInt(7, appointmentId);
+                    updated = pst.executeUpdate() > 0;
+                }
+
+                if (!updated) {
+                    con.rollback();
+                    return false;
+                }
+
+                con.commit();
+                return true;
+            } catch (SQLException e) {
+                try {
+                    con.rollback();
+                } catch (SQLException ignored) {
+                    // Keep original exception.
+                }
+                throw e;
+            } finally {
+                try {
+                    con.setAutoCommit(originalAutoCommit);
+                } catch (SQLException ignored) {
+                    // No-op.
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private Integer findLinkedPatientIdForAppointment(Connection con, int appointmentId) throws SQLException {
+        String sql = "SELECT patient_id FROM appointment WHERE appointment_id=? LIMIT 1";
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.setInt(1, appointmentId);
+            try (ResultSet rs = pst.executeQuery()) {
+                if (rs.next()) {
+                    int patientId = rs.getInt("patient_id");
+                    if (!rs.wasNull() && patientId > 0) {
+                        return patientId;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     private boolean confirmAppointmentStatusUpdate() {
         int result = JOptionPane.showConfirmDialog(
             this,
@@ -2597,8 +3502,14 @@ public class AdminDashboardFrame extends JFrame {
         return result == JOptionPane.YES_OPTION;
     }
 
-    private boolean insertPatientToDatabase(String fullName, String contactNumber, String emergencyContactNumber) {
-        String sql = "INSERT INTO patients (patient_code, full_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?)";
+    private boolean insertPatientToDatabase(
+        String firstName,
+        String middleName,
+        String lastName,
+        String contactNumber,
+        String emergencyContactNumber
+    ) {
+        String sql = "INSERT INTO patient (first_name, middle_name, last_name, contact_number, emergency_contact_number) VALUES (?, ?, ?, ?, ?)";
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
                 return false;
@@ -2607,12 +3518,16 @@ public class AdminDashboardFrame extends JFrame {
             if (patientContactNumberExists(con, contactNumber, null) || patientContactNumberExists(con, emergencyContactNumber, null)) {
                 return false;
             }
-            String code = nextPatientCodeFromDatabase(con);
             try (PreparedStatement pst = con.prepareStatement(sql)) {
-                pst.setString(1, code);
-                pst.setString(2, fullName);
-                pst.setString(3, contactNumber);
-                pst.setString(4, emergencyContactNumber);
+                pst.setString(1, safeText(firstName, "").trim());
+                if (middleName == null || middleName.trim().isBlank()) {
+                    pst.setNull(2, Types.VARCHAR);
+                } else {
+                    pst.setString(2, middleName.trim());
+                }
+                pst.setString(3, safeText(lastName, "").trim());
+                pst.setString(4, contactNumber);
+                pst.setString(5, emergencyContactNumber);
                 return pst.executeUpdate() > 0;
             }
         } catch (SQLException e) {
@@ -2623,11 +3538,13 @@ public class AdminDashboardFrame extends JFrame {
 
     private boolean updatePatientInDatabase(
         PatientRecord record,
-        String fullName,
+        String firstName,
+        String middleName,
+        String lastName,
         String contactNumber,
         String emergencyContactNumber
     ) {
-        String sql = "UPDATE patients SET full_name=?, contact_number=?, emergency_contact_number=? WHERE id=?";
+        String sql = "UPDATE patient SET first_name=?, middle_name=?, last_name=?, contact_number=?, emergency_contact_number=? WHERE patient_id=?";
         try (Connection con = DBConnection.getConnection();
              PreparedStatement pst = con == null ? null : con.prepareStatement(sql)) {
             if (con == null || pst == null) {
@@ -2638,10 +3555,16 @@ public class AdminDashboardFrame extends JFrame {
                 || patientContactNumberExists(con, emergencyContactNumber, record.id)) {
                 return false;
             }
-            pst.setString(1, fullName);
-            pst.setString(2, contactNumber);
-            pst.setString(3, emergencyContactNumber);
-            pst.setInt(4, record.id);
+            pst.setString(1, safeText(firstName, "").trim());
+            if (middleName == null || middleName.trim().isBlank()) {
+                pst.setNull(2, Types.VARCHAR);
+            } else {
+                pst.setString(2, middleName.trim());
+            }
+            pst.setString(3, safeText(lastName, "").trim());
+            pst.setString(4, contactNumber);
+            pst.setString(5, emergencyContactNumber);
+            pst.setInt(6, record.id);
             return pst.executeUpdate() > 0;
         } catch (SQLException e) {
             e.printStackTrace();
@@ -2656,10 +3579,10 @@ public class AdminDashboardFrame extends JFrame {
         }
 
         StringBuilder sql = new StringBuilder(
-            "SELECT 1 FROM patients WHERE (contact_number=? OR emergency_contact_number=?)"
+            "SELECT 1 FROM patient WHERE (contact_number=? OR emergency_contact_number=?)"
         );
         if (excludePatientId != null) {
-            sql.append(" AND id<>?");
+            sql.append(" AND patient_id<>?");
         }
         sql.append(" LIMIT 1");
 
@@ -2795,17 +3718,6 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
-    private String nextPatientCodeFromDatabase(Connection con) throws SQLException {
-        String sql = "SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM patients";
-        try (PreparedStatement pst = con.prepareStatement(sql);
-             ResultSet rs = pst.executeQuery()) {
-            if (rs.next()) {
-                return String.format("PT-%04d", rs.getInt("next_id"));
-            }
-        }
-        return "PT-0001";
-    }
-
     private String normalizeAppointmentStatus(String raw) {
         if (raw == null) {
             return "pending";
@@ -2836,7 +3748,7 @@ public class AdminDashboardFrame extends JFrame {
         if (columns.isEmpty()) {
             return new AccountMeta(false, columns, null, null, null);
         }
-        String idColumn = firstExisting(columns, "id", "account_id", "user_id");
+        String idColumn = firstExisting(columns, "account_id", "id", "user_id");
         String nameColumn = firstExisting(columns, "full_name", "name");
         String createdColumn = firstExisting(columns, "created_at", "date_created", "created_on");
         return new AccountMeta(true, columns, idColumn, nameColumn, createdColumn);
@@ -2866,9 +3778,15 @@ public class AdminDashboardFrame extends JFrame {
         JTextField firstName = new JTextField();
         JTextField middleName = new JTextField();
         JTextField lastName = new JTextField();
+        JTextField contact = new JTextField();
+        JTextField emergencyContact = new JTextField();
         JDateChooser datePicker = new JDateChooser();
         datePicker.setDateFormatString("MM/dd/yyyy");
-        datePicker.setDate(new java.util.Date());
+        LocalDate allowedStartDate = LocalDate.now();
+        LocalDate allowedEndDate = allowedStartDate.withDayOfMonth(allowedStartDate.lengthOfMonth());
+        datePicker.setMinSelectableDate(Date.valueOf(allowedStartDate));
+        datePicker.setMaxSelectableDate(Date.valueOf(allowedEndDate));
+        datePicker.setDate(Date.valueOf(allowedStartDate));
 
         JComboBox<String> timeSelector = new JComboBox<>(buildAppointmentTimeOptions());
         JTextField reason = new JTextField();
@@ -2878,12 +3796,16 @@ public class AdminDashboardFrame extends JFrame {
         styleInputField(firstName);
         styleInputField(middleName);
         styleInputField(lastName);
+        styleInputField(contact);
+        styleInputField(emergencyContact);
         styleInputField(reason);
         styleInputField(allergies);
         styleInputField(notes);
         applyLettersOnlyInputRestriction(firstName);
         applyLettersOnlyInputRestriction(middleName);
         applyLettersOnlyInputRestriction(lastName);
+        applyDigitsOnlyInputRestriction(contact, 11);
+        applyDigitsOnlyInputRestriction(emergencyContact, 11);
         applyLettersAndSpacesInputRestriction(reason);
         applyLettersAndSpacesInputRestriction(allergies);
         styleDateChooserField(datePicker);
@@ -2897,73 +3819,31 @@ public class AdminDashboardFrame extends JFrame {
         firstName.setPreferredSize(new Dimension(320, 42));
         middleName.setPreferredSize(new Dimension(320, 42));
         lastName.setPreferredSize(new Dimension(320, 42));
+        contact.setPreferredSize(new Dimension(320, 42));
+        emergencyContact.setPreferredSize(new Dimension(320, 42));
         reason.setPreferredSize(new Dimension(320, 42));
         allergies.setPreferredSize(new Dimension(320, 42));
         notes.setPreferredSize(new Dimension(320, 42));
 
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createEmptyBorder(12, 10, 8, 10));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
+        JPanel formGrid = new JPanel(new GridLayout(5, 2, 18, 14));
+        formGrid.setOpaque(false);
+        formGrid.add(landscapeFieldBlock("First Name", firstName));
+        formGrid.add(landscapeFieldBlock("Appointment Date", datePicker));
+        formGrid.add(landscapeFieldBlock("Middle Name (optional)", middleName));
+        formGrid.add(landscapeFieldBlock("Appointment Time", timeSelector));
+        formGrid.add(landscapeFieldBlock("Last Name", lastName));
+        formGrid.add(landscapeFieldBlock("Reason", reason));
+        formGrid.add(landscapeFieldBlock("Contact Number", contact));
+        formGrid.add(landscapeFieldBlock("Allergies (optional)", allergies));
+        formGrid.add(landscapeFieldBlock("Emergency Contact Number", emergencyContact));
+        formGrid.add(landscapeFieldBlock("Notes (optional)", notes));
 
-        form.add(new JLabel("First Name"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(firstName, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Middle Name (optional)"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(middleName, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Last Name"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(lastName, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Appointment Date"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(datePicker, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Appointment Time"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(timeSelector, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Reason"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(reason, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Allergies (optional)"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 14, 0);
-        form.add(allergies, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 8, 0);
-        form.add(new JLabel("Notes (optional)"), gbc);
-        gbc.gridy++;
-        gbc.insets = new java.awt.Insets(0, 0, 0, 0);
-        form.add(notes, gbc);
+        JPanel form = new JPanel(new BorderLayout());
+        form.setOpaque(false);
+        form.setBorder(BorderFactory.createEmptyBorder(14, 14, 10, 14));
+        form.add(formGrid, BorderLayout.CENTER);
+        form.setPreferredSize(new Dimension(860, 420));
+        form.setMinimumSize(new Dimension(760, 400));
 
         while (true) {
             int result = JOptionPane.showConfirmDialog(
@@ -2978,11 +3858,13 @@ public class AdminDashboardFrame extends JFrame {
                 return;
             }
 
-            resetFieldValidationState(firstName, middleName, lastName, datePicker, timeSelector, reason, allergies, notes);
+            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact, datePicker, timeSelector, reason, allergies, notes);
 
             String firstNameText = firstName.getText().trim();
             String middleNameText = middleName.getText().trim();
             String lastNameText = lastName.getText().trim();
+            String contactText = contact.getText().trim();
+            String emergencyContactText = emergencyContact.getText().trim();
             String reasonText = reason.getText().trim();
             String allergiesText = allergies.getText().trim();
             String notesText = notes.getText().trim();
@@ -3035,6 +3917,44 @@ public class AdminDashboardFrame extends JFrame {
                     this,
                     lastNameError,
                     "Invalid Last Name",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String contactError = validatePhoneNumber("Contact Number", contactText);
+            if (contactError != null) {
+                highlightInvalidField(contact);
+                JOptionPane.showMessageDialog(
+                    this,
+                    contactError,
+                    "Invalid Contact Number",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String emergencyContactError = validatePhoneNumber("Emergency Contact Number", emergencyContactText);
+            if (emergencyContactError != null) {
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(
+                    this,
+                    emergencyContactError,
+                    "Invalid Emergency Contact Number",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String normalizedContact = normalizePhoneNumber(contactText);
+            String normalizedEmergencyContact = normalizePhoneNumber(emergencyContactText);
+            if (!normalizedContact.isBlank() && normalizedContact.equals(normalizedEmergencyContact)) {
+                highlightInvalidField(contact);
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Contact Number and Emergency Contact Number must be different.",
+                    "Duplicate Contact Numbers",
                     JOptionPane.WARNING_MESSAGE
                 );
                 continue;
@@ -3117,6 +4037,8 @@ public class AdminDashboardFrame extends JFrame {
             String patientName = buildPatientFullName(firstNameText, middleNameText, lastNameText);
             if (!insertAppointmentToDatabase(
                 patientName,
+                normalizedContact,
+                normalizedEmergencyContact,
                 appointmentDate,
                 appointmentTime,
                 reasonText,
@@ -3166,19 +4088,26 @@ public class AdminDashboardFrame extends JFrame {
         applyLettersOnlyInputRestriction(middleName);
         applyLettersOnlyInputRestriction(lastName);
 
-        JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-        form.add(new JLabel("First Name"));
-        form.add(firstName);
-        form.add(new JLabel("Middle Name (optional)"));
-        form.add(middleName);
-        form.add(new JLabel("Last Name"));
-        form.add(lastName);
-        form.add(new JLabel("Username"));
-        form.add(username);
-        form.add(new JLabel("Password"));
-        form.add(password);
-        form.add(new JLabel("Confirm Password"));
-        form.add(confirmPassword);
+        JPanel form = landscapeFormPanel(
+            new String[]{
+                "First Name",
+                "Username",
+                "Middle Name (optional)",
+                "Password",
+                "Last Name",
+                "Confirm Password"
+            },
+            new JComponent[]{
+                firstName,
+                username,
+                middleName,
+                password,
+                lastName,
+                confirmPassword
+            },
+            2,
+            760
+        );
 
         while (true) {
             int result = JOptionPane.showConfirmDialog(
@@ -3279,6 +4208,328 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
+    private void openEditAppointmentDialog(AppointmentRecord record) {
+        if (record == null) {
+            return;
+        }
+        AppointmentRecord latestRecord = fetchAppointmentRecordById(record.id);
+        if (latestRecord == null) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not load the selected appointment. Please refresh and try again.",
+                "Load Failed",
+                JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+        record = latestRecord;
+        if (record.patientPk <= 0) {
+            JOptionPane.showMessageDialog(
+                this,
+                "This appointment is not linked to a patient record. Please relink the patient before editing.",
+                "Missing Patient Link",
+                JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        String[] nameParts = splitPatientNameParts(safeText(record.patientName, ""));
+        JTextField firstName = new JTextField(safeText(nameParts[0], ""));
+        JTextField middleName = new JTextField(safeText(nameParts[1], ""));
+        JTextField lastName = new JTextField(safeText(nameParts[2], ""));
+        JTextField contact = new JTextField(safeText(record.contactNumber, ""));
+        JTextField emergencyContact = new JTextField(safeText(record.emergencyContactNumber, ""));
+        JDateChooser datePicker = new JDateChooser();
+        datePicker.setDateFormatString("MM/dd/yyyy");
+        LocalDate allowedStartDate = LocalDate.now();
+        LocalDate allowedEndDate = allowedStartDate.withDayOfMonth(allowedStartDate.lengthOfMonth());
+        LocalDate seedDate = record.appointmentDate == null ? allowedStartDate : record.appointmentDate;
+        if (seedDate.isBefore(allowedStartDate) || seedDate.isAfter(allowedEndDate)) {
+            seedDate = allowedStartDate;
+        }
+        datePicker.setMinSelectableDate(Date.valueOf(allowedStartDate));
+        datePicker.setMaxSelectableDate(Date.valueOf(allowedEndDate));
+        datePicker.setDate(Date.valueOf(seedDate));
+
+        JComboBox<String> timeSelector = new JComboBox<>(buildAppointmentTimeOptions());
+        JTextField reason = new JTextField(safeText(record.reason, ""));
+        String existingAllergies = safeText(record.allergies, "");
+        if ("N/A".equalsIgnoreCase(existingAllergies.trim())) {
+            existingAllergies = "";
+        }
+        JTextField allergies = new JTextField(existingAllergies);
+        JTextField notes = new JTextField(safeText(record.notes, ""));
+
+        styleInputField(firstName);
+        styleInputField(middleName);
+        styleInputField(lastName);
+        styleInputField(contact);
+        styleInputField(emergencyContact);
+        styleInputField(reason);
+        styleInputField(allergies);
+        styleInputField(notes);
+        applyLettersOnlyInputRestriction(firstName);
+        applyLettersOnlyInputRestriction(middleName);
+        applyLettersOnlyInputRestriction(lastName);
+        applyDigitsOnlyInputRestriction(contact, 11);
+        applyDigitsOnlyInputRestriction(emergencyContact, 11);
+        applyLettersAndSpacesInputRestriction(reason);
+        applyLettersAndSpacesInputRestriction(allergies);
+        styleDateChooserField(datePicker);
+        applyDefaultFieldBorder(timeSelector);
+
+        timeSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        timeSelector.setBackground(Color.WHITE);
+        timeSelector.setPreferredSize(new Dimension(320, 42));
+        String selectedTime = "9:00 AM";
+        if (record.appointmentTime != null) {
+            selectedTime = record.appointmentTime.withSecond(0).withNano(0).format(APPOINTMENT_FORM_TIME_FORMAT);
+        } else if (record.timeText != null && !record.timeText.isBlank()) {
+            try {
+                selectedTime = parseTimeValue(record.timeText).format(APPOINTMENT_FORM_TIME_FORMAT);
+            } catch (Exception ignored) {
+                selectedTime = "9:00 AM";
+            }
+        }
+        timeSelector.setSelectedItem(selectedTime);
+
+        firstName.setPreferredSize(new Dimension(320, 42));
+        middleName.setPreferredSize(new Dimension(320, 42));
+        lastName.setPreferredSize(new Dimension(320, 42));
+        contact.setPreferredSize(new Dimension(320, 42));
+        emergencyContact.setPreferredSize(new Dimension(320, 42));
+        reason.setPreferredSize(new Dimension(320, 42));
+        allergies.setPreferredSize(new Dimension(320, 42));
+        notes.setPreferredSize(new Dimension(320, 42));
+
+        JPanel formGrid = new JPanel(new GridLayout(5, 2, 18, 14));
+        formGrid.setOpaque(false);
+        formGrid.add(landscapeFieldBlock("First Name", firstName));
+        formGrid.add(landscapeFieldBlock("Appointment Date", datePicker));
+        formGrid.add(landscapeFieldBlock("Middle Name (optional)", middleName));
+        formGrid.add(landscapeFieldBlock("Appointment Time", timeSelector));
+        formGrid.add(landscapeFieldBlock("Last Name", lastName));
+        formGrid.add(landscapeFieldBlock("Reason", reason));
+        formGrid.add(landscapeFieldBlock("Contact Number", contact));
+        formGrid.add(landscapeFieldBlock("Allergies (optional)", allergies));
+        formGrid.add(landscapeFieldBlock("Emergency Contact Number", emergencyContact));
+        formGrid.add(landscapeFieldBlock("Notes (optional)", notes));
+
+        JPanel form = new JPanel(new BorderLayout());
+        form.setOpaque(false);
+        form.setBorder(BorderFactory.createEmptyBorder(14, 14, 10, 14));
+        form.add(formGrid, BorderLayout.CENTER);
+        form.setPreferredSize(new Dimension(860, 420));
+        form.setMinimumSize(new Dimension(760, 400));
+
+        while (true) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Edit Appointment",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+            );
+
+            if (result != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact, datePicker, timeSelector, reason, allergies, notes);
+
+            String firstNameText = firstName.getText().trim();
+            String middleNameText = middleName.getText().trim();
+            String lastNameText = lastName.getText().trim();
+            String contactText = contact.getText().trim();
+            String emergencyContactText = emergencyContact.getText().trim();
+            String reasonText = reason.getText().trim();
+            String allergiesText = allergies.getText().trim();
+            String notesText = notes.getText().trim();
+
+            java.util.Date selectedDateValue = datePicker.getDate();
+            if (selectedDateValue == null) {
+                highlightInvalidField(datePicker);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Please select an appointment date.",
+                    "Invalid Appointment Date",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+            LocalDate appointmentDate = new Date(selectedDateValue.getTime()).toLocalDate();
+            String dateText = appointmentDate.format(APPOINTMENT_FORM_DATE_FORMAT);
+            String timeText = timeSelector.getSelectedItem() == null
+                ? ""
+                : timeSelector.getSelectedItem().toString().trim();
+
+            String firstNameError = validateRequiredPatientNamePart("First Name", firstNameText);
+            if (firstNameError != null) {
+                highlightInvalidField(firstName);
+                JOptionPane.showMessageDialog(this, firstNameError, "Invalid First Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String middleNameError = validateOptionalPatientNamePart("Middle Name", middleNameText);
+            if (middleNameError != null) {
+                highlightInvalidField(middleName);
+                JOptionPane.showMessageDialog(this, middleNameError, "Invalid Middle Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String lastNameError = validateRequiredPatientNamePart("Last Name", lastNameText);
+            if (lastNameError != null) {
+                highlightInvalidField(lastName);
+                JOptionPane.showMessageDialog(this, lastNameError, "Invalid Last Name", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String contactError = validatePhoneNumber("Contact Number", contactText);
+            if (contactError != null) {
+                highlightInvalidField(contact);
+                JOptionPane.showMessageDialog(this, contactError, "Invalid Contact Number", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String emergencyContactError = validatePhoneNumber("Emergency Contact Number", emergencyContactText);
+            if (emergencyContactError != null) {
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(this, emergencyContactError, "Invalid Emergency Contact Number", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String normalizedContact = normalizePhoneNumber(contactText);
+            String normalizedEmergencyContact = normalizePhoneNumber(emergencyContactText);
+            if (!normalizedContact.isBlank() && normalizedContact.equals(normalizedEmergencyContact)) {
+                highlightInvalidField(contact);
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Contact Number and Emergency Contact Number must be different.",
+                    "Duplicate Contact Numbers",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String duplicateContactError = validatePatientContactUniqueness(
+                normalizedContact,
+                normalizedEmergencyContact,
+                record.patientPk > 0 ? record.patientPk : null
+            );
+            if (duplicateContactError != null) {
+                highlightInvalidField(contact);
+                highlightInvalidField(emergencyContact);
+                JOptionPane.showMessageDialog(this, duplicateContactError, "Duplicate Contact Number", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String dateValidationError = validateAppointmentDateInput(dateText);
+            if (dateValidationError != null) {
+                highlightInvalidField(datePicker);
+                JOptionPane.showMessageDialog(
+                    this,
+                    dateValidationError,
+                    "Invalid Appointment Date",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String timeValidationError = validateAppointmentTimeInput(timeText);
+            if (timeValidationError != null) {
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    timeValidationError,
+                    "Invalid Appointment Time",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String reasonError = validateLettersAndSpacesField("Reason", reasonText, true);
+            if (reasonError != null) {
+                highlightInvalidField(reason);
+                JOptionPane.showMessageDialog(this, reasonError, "Invalid Reason", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String allergiesError = validateLettersAndSpacesField("Allergies", allergiesText, false);
+            if (allergiesError != null) {
+                highlightInvalidField(allergies);
+                JOptionPane.showMessageDialog(this, allergiesError, "Invalid Allergies", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            if (allergiesText.isBlank()) {
+                allergiesText = "N/A";
+            }
+
+            LocalTime appointmentTime;
+            try {
+                appointmentTime = parseAppointmentFormTime(timeText);
+            } catch (Exception ex) {
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Invalid appointment time. Use h:mm AM/PM format (example: 9:00 AM).",
+                    "Invalid Appointment Time",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String overlapError = validateAppointmentSlotAvailability(appointmentDate, appointmentTime, record.id);
+            if (overlapError != null) {
+                highlightInvalidField(datePicker);
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(this, overlapError, "Schedule Conflict", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            if (!updateAppointmentDetailsInDatabase(
+                record.id,
+                record.patientPk,
+                firstNameText,
+                middleNameText,
+                lastNameText,
+                normalizedContact,
+                normalizedEmergencyContact,
+                appointmentDate,
+                appointmentTime,
+                reasonText,
+                allergiesText,
+                notesText
+            )) {
+                String postCheckOverlapError = validateAppointmentSlotAvailability(appointmentDate, appointmentTime, record.id);
+                if (TIME_SLOT_BOOKED_MESSAGE.equals(postCheckOverlapError)) {
+                    highlightInvalidField(datePicker);
+                    highlightInvalidField(timeSelector);
+                    JOptionPane.showMessageDialog(this, postCheckOverlapError, "Schedule Conflict", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not update the appointment. Please check your database connection and try again.",
+                    "Update Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                continue;
+            }
+
+            refreshAllViews();
+            JOptionPane.showMessageDialog(
+                this,
+                "Appointment and patient information updated successfully.",
+                "Update Successful",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+    }
+
     private void openAddPatientDialog() {
         JTextField firstName = new JTextField();
         JTextField middleName = new JTextField();
@@ -3296,17 +4547,24 @@ public class AdminDashboardFrame extends JFrame {
         applyDigitsOnlyInputRestriction(contact, 11);
         applyDigitsOnlyInputRestriction(emergencyContact, 11);
 
-        JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-        form.add(new JLabel("First Name"));
-        form.add(firstName);
-        form.add(new JLabel("Middle Name"));
-        form.add(middleName);
-        form.add(new JLabel("Last Name"));
-        form.add(lastName);
-        form.add(new JLabel("Contact Number"));
-        form.add(contact);
-        form.add(new JLabel("Emergency Contact Number"));
-        form.add(emergencyContact);
+        JPanel form = landscapeFormPanel(
+            new String[]{
+                "First Name",
+                "Middle Name (optional)",
+                "Last Name",
+                "Contact Number",
+                "Emergency Contact Number"
+            },
+            new JComponent[]{
+                firstName,
+                middleName,
+                lastName,
+                contact,
+                emergencyContact
+            },
+            2,
+            760
+        );
 
         while (true) {
             int result = JOptionPane.showConfirmDialog(
@@ -3380,8 +4638,13 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
-            String fullName = buildPatientFullName(firstName.getText(), middleName.getText(), lastName.getText());
-            if (!insertPatientToDatabase(fullName, normalizedContact, normalizedEmergency)) {
+            if (!insertPatientToDatabase(
+                firstName.getText(),
+                middleName.getText(),
+                lastName.getText(),
+                normalizedContact,
+                normalizedEmergency
+            )) {
                 String postInsertDuplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, null);
                 if (postInsertDuplicateError != null
                     && (postInsertDuplicateError.startsWith("Contact Number already exists")
@@ -3638,6 +4901,12 @@ public class AdminDashboardFrame extends JFrame {
         actions.setOpaque(false);
         actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
+        JButton editButton = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
+        editButton.setPreferredSize(new Dimension(96, 30));
+        editButton.setMinimumSize(new Dimension(96, 30));
+        editButton.setMaximumSize(new Dimension(96, 30));
+        editButton.addActionListener(e -> openEditAppointmentDialog(record));
+
         JButton confirmButton = softActionButton("Confirm", new Color(231, 246, 236), new Color(46, 174, 102));
         confirmButton.setPreferredSize(new Dimension(96, 30));
         confirmButton.setMinimumSize(new Dimension(96, 30));
@@ -3686,8 +4955,10 @@ public class AdminDashboardFrame extends JFrame {
             refreshAllViews();
         });
 
-        actions.setPreferredSize(new Dimension(100, 70));
-        actions.setMinimumSize(new Dimension(100, 70));
+        actions.setPreferredSize(new Dimension(100, 112));
+        actions.setMinimumSize(new Dimension(100, 112));
+        actions.add(editButton);
+        actions.add(Box.createVerticalStrut(8));
         actions.add(confirmButton);
         actions.add(Box.createVerticalStrut(8));
         actions.add(cancelButton);
@@ -3825,18 +5096,16 @@ public class AdminDashboardFrame extends JFrame {
         row.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
         row.setMaximumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, Integer.MAX_VALUE));
 
-        String[] nameParts = splitPatientNameParts(record.name);
-
         JPanel patientIdCell = chipLabel(truncateText(safeText(record.patientId, "—"), 16));
         addPatientTableGridCell(row, patientIdCell, 0, GridBagConstraints.WEST);
 
-        JPanel firstNameCell = appointmentWrappedTextCell(safeText(nameParts[0], "-"), patientColumnWidth(1) - 10);
+        JPanel firstNameCell = appointmentWrappedTextCell(safeText(record.firstName, "-"), patientColumnWidth(1) - 10);
         addPatientTableGridCell(row, firstNameCell, 1, GridBagConstraints.NORTHWEST);
 
-        JPanel middleNameCell = appointmentWrappedTextCell(safeText(nameParts[1], "-"), patientColumnWidth(2) - 10);
+        JPanel middleNameCell = appointmentWrappedTextCell(safeText(record.middleName, "-"), patientColumnWidth(2) - 10);
         addPatientTableGridCell(row, middleNameCell, 2, GridBagConstraints.NORTHWEST);
 
-        JPanel lastNameCell = appointmentWrappedTextCell(safeText(nameParts[2], "-"), patientColumnWidth(3) - 10);
+        JPanel lastNameCell = appointmentWrappedTextCell(safeText(record.lastName, "-"), patientColumnWidth(3) - 10);
         addPatientTableGridCell(row, lastNameCell, 3, GridBagConstraints.NORTHWEST);
 
         JPanel contactCell = appointmentWrappedTextCell(safeText(record.contactNumber, "-"), patientColumnWidth(4) - 10);
@@ -3858,12 +5127,22 @@ public class AdminDashboardFrame extends JFrame {
         edit.setMaximumSize(new Dimension(88, 32));
         edit.setAlignmentX(Component.CENTER_ALIGNMENT);
         edit.addActionListener(e -> {
-            String[] editNameParts = splitPatientNameParts(record.name);
-            JTextField firstNameField = new JTextField(editNameParts[0]);
-            JTextField middleNameField = new JTextField(editNameParts[1]);
-            JTextField lastNameField = new JTextField(editNameParts[2]);
-            JTextField contactField = new JTextField(record.contactNumber);
-            JTextField emergencyContactField = new JTextField(record.emergencyContactNumber);
+            PatientRecord latestRecord = fetchPatientRecordById(record.id);
+            if (latestRecord == null) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not load the selected patient. Please refresh and try again.",
+                    "Load Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+
+            JTextField firstNameField = new JTextField(safeText(latestRecord.firstName, ""));
+            JTextField middleNameField = new JTextField(safeText(latestRecord.middleName, ""));
+            JTextField lastNameField = new JTextField(safeText(latestRecord.lastName, ""));
+            JTextField contactField = new JTextField(latestRecord.contactNumber);
+            JTextField emergencyContactField = new JTextField(latestRecord.emergencyContactNumber);
             styleInputField(firstNameField);
             styleInputField(middleNameField);
             styleInputField(lastNameField);
@@ -3874,17 +5153,24 @@ public class AdminDashboardFrame extends JFrame {
             applyLettersOnlyInputRestriction(lastNameField);
             applyDigitsOnlyInputRestriction(contactField, 11);
             applyDigitsOnlyInputRestriction(emergencyContactField, 11);
-            JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-            form.add(new JLabel("First Name"));
-            form.add(firstNameField);
-            form.add(new JLabel("Middle Name"));
-            form.add(middleNameField);
-            form.add(new JLabel("Last Name"));
-            form.add(lastNameField);
-            form.add(new JLabel("Contact Number"));
-            form.add(contactField);
-            form.add(new JLabel("Emergency Contact Number"));
-            form.add(emergencyContactField);
+            JPanel form = landscapeFormPanel(
+                new String[]{
+                    "First Name",
+                    "Middle Name (optional)",
+                    "Last Name",
+                    "Contact Number",
+                    "Emergency Contact Number"
+                },
+                new JComponent[]{
+                    firstNameField,
+                    middleNameField,
+                    lastNameField,
+                    contactField,
+                    emergencyContactField
+                },
+                2,
+                760
+            );
             while (true) {
                 int result = JOptionPane.showConfirmDialog(
                     this,
@@ -3948,7 +5234,11 @@ public class AdminDashboardFrame extends JFrame {
                     continue;
                 }
 
-                String duplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, record.id);
+                String duplicateError = validatePatientContactUniqueness(
+                    normalizedContact,
+                    normalizedEmergency,
+                    latestRecord.id
+                );
                 if (duplicateError != null) {
                     highlightInvalidField(contactField);
                     highlightInvalidField(emergencyContactField);
@@ -3956,13 +5246,19 @@ public class AdminDashboardFrame extends JFrame {
                     continue;
                 }
 
-                String fullName = buildPatientFullName(
+                if (!updatePatientInDatabase(
+                    latestRecord,
                     firstNameField.getText(),
                     middleNameField.getText(),
-                    lastNameField.getText()
-                );
-                if (!updatePatientInDatabase(record, fullName, normalizedContact, normalizedEmergency)) {
-                    String postUpdateDuplicateError = validatePatientContactUniqueness(normalizedContact, normalizedEmergency, record.id);
+                    lastNameField.getText(),
+                    normalizedContact,
+                    normalizedEmergency
+                )) {
+                    String postUpdateDuplicateError = validatePatientContactUniqueness(
+                        normalizedContact,
+                        normalizedEmergency,
+                        latestRecord.id
+                    );
                     if (postUpdateDuplicateError != null
                         && (postUpdateDuplicateError.startsWith("Contact Number already exists")
                             || postUpdateDuplicateError.startsWith("Emergency Contact Number already exists"))) {
@@ -3980,6 +5276,12 @@ public class AdminDashboardFrame extends JFrame {
                     continue;
                 }
                 refreshAllViews();
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Record updated successfully.",
+                    "Update Successful",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
                 return;
             }
         });
@@ -4205,7 +5507,7 @@ public class AdminDashboardFrame extends JFrame {
             } else {
                 receptionistRows.add(receptionistEmptyStatePanel("No deactivated receptionists yet."));
             }
-            updateRowsPanelPreferredHeight(receptionistRows, 1);
+            updateRowsPanelHeightFromChildren(receptionistRows);
         } else {
             int i = 0;
             for (ReceptionistRecord record : filtered) {
@@ -4215,7 +5517,7 @@ public class AdminDashboardFrame extends JFrame {
                 receptionistRows.add(receptionistRow(record));
                 i++;
             }
-            updateRowsPanelPreferredHeight(receptionistRows, filtered.size());
+            updateRowsPanelHeightFromChildren(receptionistRows);
         }
 
         receptionistRows.revalidate();
@@ -4236,65 +5538,91 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private JPanel receptionistRow(ReceptionistRecord record) {
-        RoundedPanel row = tableRowCard(TABLE_ROW_HEIGHT);
-        row.setLayout(new BorderLayout(12, 0));
+        RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
+        row.setLayout(new GridBagLayout());
+        row.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
+                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+            )
+        );
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
+        row.setMaximumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, Integer.MAX_VALUE));
 
-        JLabel accountIdLabel = new JLabel(truncateText(safeText(record.accountId, "—"), 12));
-        accountIdLabel.setFont(new Font("Monospaced", Font.BOLD, 19));
-        accountIdLabel.setForeground(new Color(63, 101, 228));
-        accountIdLabel.setPreferredSize(new Dimension(138, 40));
-        row.add(rowCell(accountIdLabel), BorderLayout.WEST);
+        JPanel accountIdCell = chipLabel(truncateText(safeText(record.accountId, "—"), 16));
+        addReceptionistTableGridCell(row, accountIdCell, 0, GridBagConstraints.CENTER);
 
-        JPanel details = new JPanel();
-        details.setOpaque(false);
-        details.setLayout(new BoxLayout(details, BoxLayout.Y_AXIS));
+        JPanel nameCell = appointmentWrappedTextCell(
+            safeText(record.name, "(No name)"),
+            receptionistColumnWidth(1) - 10
+        );
+        addReceptionistTableGridCell(row, nameCell, 1, GridBagConstraints.NORTHWEST);
 
-        JLabel nameLabel = new JLabel(truncateText(safeText(record.name, "(No name)"), 30));
-        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        nameLabel.setForeground(new Color(33, 46, 71));
-        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel usernameCell = appointmentWrappedTextCell(
+            "@" + safeText(record.username, "-"),
+            receptionistColumnWidth(2) - 10
+        );
+        addReceptionistTableGridCell(row, usernameCell, 2, GridBagConstraints.NORTHWEST);
 
-        String usernameAndCreated = "@" + safeText(record.username, "-")
-            + "  •  Created " + safeText(record.createdText, "-");
-        JLabel subtitleLabel = new JLabel(truncateText(usernameAndCreated, 56));
-        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        subtitleLabel.setForeground(new Color(109, 124, 151));
-        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel createdCell = appointmentWrappedTextCell(
+            safeText(record.createdText, "-"),
+            receptionistColumnWidth(3) - 10
+        );
+        addReceptionistTableGridCell(row, createdCell, 3, GridBagConstraints.NORTHWEST);
 
-        details.add(nameLabel);
-        details.add(Box.createVerticalStrut(4));
-        details.add(subtitleLabel);
-        row.add(details, BorderLayout.CENTER);
+        JPanel statusCell = statusBadge(record.status);
+        addReceptionistTableGridCell(row, statusCell, 4, GridBagConstraints.CENTER);
 
         JPanel actions = new JPanel();
         actions.setOpaque(false);
-        actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
-        actions.add(statusBadge(record.status));
-        actions.add(Box.createHorizontalStrut(10));
+        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
         JButton edit = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
+        edit.setPreferredSize(new Dimension(108, 32));
+        edit.setMinimumSize(new Dimension(108, 32));
+        edit.setMaximumSize(new Dimension(108, 32));
+        edit.setAlignmentX(Component.CENTER_ALIGNMENT);
         edit.addActionListener(e -> {
             if (!confirmAdminPasswordForReceptionistEdit()) {
                 return;
             }
 
-            JTextField nameField = new JTextField(record.name);
-            JTextField usernameField = new JTextField(record.username);
+            ReceptionistRecord latestRecord = fetchReceptionistRecordForEdit(record);
+            if (latestRecord == null) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not load the selected receptionist. Please refresh and try again.",
+                    "Load Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+
+            JTextField nameField = new JTextField(latestRecord.name);
+            JTextField usernameField = new JTextField(latestRecord.username);
             JPasswordField passwordField = new JPasswordField();
             JPasswordField confirmPasswordField = new JPasswordField();
             styleInputField(nameField);
             styleInputField(usernameField);
             stylePasswordField(passwordField);
             stylePasswordField(confirmPasswordField);
-            JPanel form = new JPanel(new GridLayout(0, 1, 8, 8));
-            form.add(new JLabel("Full Name"));
-            form.add(nameField);
-            form.add(new JLabel("Username"));
-            form.add(usernameField);
-            form.add(new JLabel("New Password (optional)"));
-            form.add(passwordField);
-            form.add(new JLabel("Confirm New Password"));
-            form.add(confirmPasswordField);
+            JPanel form = landscapeFormPanel(
+                new String[]{
+                    "Full Name",
+                    "Username",
+                    "New Password (optional)",
+                    "Confirm New Password"
+                },
+                new JComponent[]{
+                    nameField,
+                    usernameField,
+                    passwordField,
+                    confirmPasswordField
+                },
+                2,
+                720
+            );
             while (true) {
                 int result = JOptionPane.showConfirmDialog(
                     this,
@@ -4325,8 +5653,8 @@ public class AdminDashboardFrame extends JFrame {
 
                 String duplicateError = validateReceptionistUsernameUniqueness(
                     usernameField.getText().trim(),
-                    record.accountPk > 0 ? record.accountPk : null,
-                    record.username
+                    latestRecord.accountPk > 0 ? latestRecord.accountPk : null,
+                    latestRecord.username
                 );
                 if (duplicateError != null) {
                     highlightInvalidField(usernameField);
@@ -4359,15 +5687,15 @@ public class AdminDashboardFrame extends JFrame {
                 }
 
                 if (!updateReceptionistInDatabase(
-                    record,
+                    latestRecord,
                     nameField.getText().trim(),
                     usernameField.getText().trim(),
                     updatePassword ? newPassword : null
                 )) {
                     String duplicateAfterUpdateError = validateReceptionistUsernameUniqueness(
                         usernameField.getText().trim(),
-                        record.accountPk > 0 ? record.accountPk : null,
-                        record.username
+                        latestRecord.accountPk > 0 ? latestRecord.accountPk : null,
+                        latestRecord.username
                     );
                     if (duplicateAfterUpdateError != null && duplicateAfterUpdateError.startsWith("Username already exists")) {
                         highlightInvalidField(usernameField);
@@ -4383,6 +5711,12 @@ public class AdminDashboardFrame extends JFrame {
                     continue;
                 }
                 refreshAllViews();
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Record updated successfully.",
+                    "Update Successful",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
                 return;
             }
         });
@@ -4391,6 +5725,10 @@ public class AdminDashboardFrame extends JFrame {
         JButton statusAction;
         if (activeReceptionist) {
             statusAction = softActionButton("Deactivate", new Color(252, 236, 236), new Color(224, 93, 93));
+            statusAction.setPreferredSize(new Dimension(108, 32));
+            statusAction.setMinimumSize(new Dimension(108, 32));
+            statusAction.setMaximumSize(new Dimension(108, 32));
+            statusAction.setAlignmentX(Component.CENTER_ALIGNMENT);
             statusAction.addActionListener(e -> {
                 if (!confirmAdminPasswordForReceptionistEdit()) {
                     return;
@@ -4408,6 +5746,10 @@ public class AdminDashboardFrame extends JFrame {
             });
         } else {
             statusAction = softActionButton("Activate", new Color(231, 246, 236), new Color(73, 190, 107));
+            statusAction.setPreferredSize(new Dimension(108, 32));
+            statusAction.setMinimumSize(new Dimension(108, 32));
+            statusAction.setMaximumSize(new Dimension(108, 32));
+            statusAction.setAlignmentX(Component.CENTER_ALIGNMENT);
             statusAction.addActionListener(e -> {
                 if (!confirmAdminPasswordForReceptionistEdit()) {
                     return;
@@ -4425,12 +5767,24 @@ public class AdminDashboardFrame extends JFrame {
             });
         }
 
+        actions.setPreferredSize(new Dimension(112, 72));
+        actions.setMinimumSize(new Dimension(112, 72));
+        actions.setMaximumSize(new Dimension(112, 72));
         if (activeReceptionist) {
             actions.add(edit);
-            actions.add(Box.createHorizontalStrut(8));
+            actions.add(Box.createVerticalStrut(8));
         }
         actions.add(statusAction);
-        row.add(rowCell(actions), BorderLayout.EAST);
+        addReceptionistTableGridCell(row, actions, 5, GridBagConstraints.CENTER);
+
+        int wrappedHeight = Math.max(nameCell.getPreferredSize().height, usernameCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, createdCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        row.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setPreferredSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setMaximumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, dynamicHeight));
         return row;
     }
 
@@ -4613,9 +5967,6 @@ public class AdminDashboardFrame extends JFrame {
         if (trimmed.isBlank()) {
             return null;
         }
-        if (trimmed.length() < 2) {
-            return fieldLabel + " must be at least 2 letters when provided.";
-        }
         if (!trimmed.matches("[A-Za-z]+")) {
             return fieldLabel + " must contain letters only when provided. Numbers and special characters are not allowed.";
         }
@@ -4729,8 +6080,10 @@ public class AdminDashboardFrame extends JFrame {
             return "Invalid date format. Please use MM/DD/YYYY (example: 04/28/2026).";
         }
 
-        if (parsedDate.isBefore(LocalDate.now())) {
-            return "Past dates are not allowed. Please select today or a future date.";
+        LocalDate today = LocalDate.now();
+        LocalDate endOfCurrentMonth = today.withDayOfMonth(today.lengthOfMonth());
+        if (parsedDate.isBefore(today) || parsedDate.isAfter(endOfCurrentMonth)) {
+            return "Appointments can only be booked from today until the end of the current month.";
         }
 
         DayOfWeek day = parsedDate.getDayOfWeek();
@@ -4816,14 +6169,14 @@ public class AdminDashboardFrame extends JFrame {
         int durationMinutes,
         Integer excludeAppointmentId
     ) throws SQLException {
-        String sql = "SELECT id, appointment_time, status FROM appointments WHERE appointment_date=?";
+        String sql = "SELECT appointment_id, appointment_time, status FROM appointment WHERE appointment_date=?";
         LocalTime appointmentEnd = appointmentStart.plusMinutes(durationMinutes);
 
         try (PreparedStatement pst = con.prepareStatement(sql)) {
             pst.setDate(1, Date.valueOf(appointmentDate));
             try (ResultSet rs = pst.executeQuery()) {
                 while (rs.next()) {
-                    int existingId = rs.getInt("id");
+                    int existingId = rs.getInt("appointment_id");
                     if (excludeAppointmentId != null && existingId == excludeAppointmentId) {
                         continue;
                     }
@@ -4895,7 +6248,16 @@ public class AdminDashboardFrame extends JFrame {
         if (appointmentSearchQuery.isBlank()) {
             return true;
         }
-        String haystack = (record.patientName + " " + record.reason + " " + record.allergies + " " + record.notes + " " + record.dateText + " " + record.timeText)
+        String haystack = (
+            record.patientName + " " +
+            record.contactNumber + " " +
+            record.emergencyContactNumber + " " +
+            record.reason + " " +
+            record.allergies + " " +
+            record.notes + " " +
+            record.dateText + " " +
+            record.timeText
+        )
             .toLowerCase(Locale.ENGLISH);
         return haystack.contains(appointmentSearchQuery);
     }
@@ -4938,7 +6300,14 @@ public class AdminDashboardFrame extends JFrame {
         if (patientSearchQuery.isBlank()) {
             return true;
         }
-        String haystack = (record.name + " " + record.contactNumber + " " + record.emergencyContactNumber + " " + record.patientId)
+        String haystack = (
+            safeText(record.firstName, "") + " " +
+            safeText(record.middleName, "") + " " +
+            safeText(record.lastName, "") + " " +
+            safeText(record.contactNumber, "") + " " +
+            safeText(record.emergencyContactNumber, "") + " " +
+            safeText(record.patientId, "")
+        )
             .toLowerCase(Locale.ENGLISH);
         return haystack.contains(patientSearchQuery);
     }
@@ -5108,6 +6477,66 @@ public class AdminDashboardFrame extends JFrame {
 
     private void addPatientTableGridCell(JPanel row, Component content, int columnIndex, int anchor) {
         int colWidth = patientColumnWidth(columnIndex);
+        Dimension contentPref = content.getPreferredSize();
+        int prefHeight = Math.max(24, contentPref == null ? 24 : contentPref.height);
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setOpaque(false);
+        wrapper.setMinimumSize(new Dimension(colWidth, prefHeight));
+        wrapper.setPreferredSize(new Dimension(colWidth, prefHeight));
+        wrapper.setMaximumSize(new Dimension(colWidth, Integer.MAX_VALUE));
+        if (anchor == GridBagConstraints.CENTER) {
+            wrapper.add(content, BorderLayout.CENTER);
+        } else if (anchor == GridBagConstraints.EAST || anchor == GridBagConstraints.NORTHEAST || anchor == GridBagConstraints.SOUTHEAST) {
+            wrapper.add(content, BorderLayout.EAST);
+        } else {
+            wrapper.add(content, BorderLayout.WEST);
+        }
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = columnIndex;
+        gbc.gridy = 0;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = anchor;
+        gbc.insets = new java.awt.Insets(0, 8, 0, 8);
+        row.add(wrapper, gbc);
+    }
+
+    private JPanel receptionistTableHeaderRow() {
+        RoundedPanel header = new RoundedPanel(12, new Color(243, 247, 255));
+        header.setLayout(new GridBagLayout());
+        header.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
+                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+            )
+        );
+        header.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 52));
+        header.setPreferredSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 52));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+
+        addReceptionistTableGridCell(header, appointmentHeaderLabel("Account ID"), 0, GridBagConstraints.WEST);
+        addReceptionistTableGridCell(header, appointmentHeaderLabel("Name"), 1, GridBagConstraints.WEST);
+        addReceptionistTableGridCell(header, appointmentHeaderLabel("Username"), 2, GridBagConstraints.WEST);
+        addReceptionistTableGridCell(header, appointmentHeaderLabel("Created"), 3, GridBagConstraints.WEST);
+        JLabel statusHeader = appointmentHeaderLabel("Status");
+        statusHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addReceptionistTableGridCell(header, statusHeader, 4, GridBagConstraints.CENTER);
+        JLabel actionsHeader = appointmentHeaderLabel("Actions");
+        actionsHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addReceptionistTableGridCell(header, actionsHeader, 5, GridBagConstraints.CENTER);
+        return header;
+    }
+
+    private int receptionistColumnWidth(int columnIndex) {
+        if (columnIndex < 0 || columnIndex >= RECEPTIONIST_TABLE_COLUMN_WIDTHS.length) {
+            return 120;
+        }
+        return RECEPTIONIST_TABLE_COLUMN_WIDTHS[columnIndex];
+    }
+
+    private void addReceptionistTableGridCell(JPanel row, Component content, int columnIndex, int anchor) {
+        int colWidth = receptionistColumnWidth(columnIndex);
         Dimension contentPref = content.getPreferredSize();
         int prefHeight = Math.max(24, contentPref == null ? 24 : contentPref.height);
         JPanel wrapper = new JPanel(new BorderLayout());
@@ -5627,7 +7056,10 @@ public class AdminDashboardFrame extends JFrame {
 
     private static class AppointmentRecord {
         final int id;
+        final int patientPk;
         final String patientName;
+        final String contactNumber;
+        final String emergencyContactNumber;
         final String dateText;
         final String timeText;
         final String reason;
@@ -5640,6 +7072,7 @@ public class AdminDashboardFrame extends JFrame {
 
         AppointmentRecord(
             int id,
+            int patientPk,
             String patientName,
             String dateText,
             String timeText,
@@ -5648,11 +7081,16 @@ public class AdminDashboardFrame extends JFrame {
             String notes,
             String status,
             String cancelReason,
+            String contactNumber,
+            String emergencyContactNumber,
             LocalDate appointmentDate,
             LocalTime appointmentTime
         ) {
             this.id = id;
+            this.patientPk = patientPk;
             this.patientName = patientName;
+            this.contactNumber = contactNumber;
+            this.emergencyContactNumber = emergencyContactNumber;
             this.dateText = dateText;
             this.timeText = timeText;
             this.reason = reason;
@@ -5668,14 +7106,26 @@ public class AdminDashboardFrame extends JFrame {
     private static class PatientRecord {
         final int id;
         final String patientId;
-        String name;
+        String firstName;
+        String middleName;
+        String lastName;
         String contactNumber;
         String emergencyContactNumber;
 
-        PatientRecord(int id, String patientId, String name, String contactNumber, String emergencyContactNumber) {
+        PatientRecord(
+            int id,
+            String patientId,
+            String firstName,
+            String middleName,
+            String lastName,
+            String contactNumber,
+            String emergencyContactNumber
+        ) {
             this.id = id;
             this.patientId = patientId;
-            this.name = name;
+            this.firstName = firstName;
+            this.middleName = middleName;
+            this.lastName = lastName;
             this.contactNumber = contactNumber;
             this.emergencyContactNumber = emergencyContactNumber;
         }
