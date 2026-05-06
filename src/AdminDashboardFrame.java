@@ -75,6 +75,7 @@ public class AdminDashboardFrame extends JFrame {
     private static final String VIEW_APPOINTMENTS = "appointments";
     private static final String VIEW_PATIENTS = "patients";
     private static final String VIEW_LOG = "log";
+    private static final String VIEW_COMPLETED_HISTORY = "completed_history";
     private static final String VIEW_RECEPTIONISTS = "receptionists";
     private static final int TABLE_VISIBLE_ROWS = 4;
     private static final int TABLE_ROW_HEIGHT = 84;
@@ -133,10 +134,11 @@ public class AdminDashboardFrame extends JFrame {
         90,  // Time
         180, // Patient Name
         420, // Appointment Details
-        260, // Deletion Reason
+        220, // History Note
+        120, // Status
         170  // Actions
     };
-    private static final int CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH = 1380;
+    private static final int CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH = 1460;
     private static final int TABLE_SCROLL_HEIGHT =
         (TABLE_VISIBLE_ROWS * TABLE_ROW_HEIGHT) + ((TABLE_VISIBLE_ROWS - 1) * TABLE_ROW_GAP) + 16;
     private static final Color INPUT_BORDER_COLOR = new Color(210, 220, 236);
@@ -150,6 +152,7 @@ public class AdminDashboardFrame extends JFrame {
     private final List<PatientRecord> patientRecords = new ArrayList<>();
     private final List<ReceptionistRecord> receptionistRecords = new ArrayList<>();
     private final List<CancellationHistoryRecord> cancellationHistoryRecords = new ArrayList<>();
+    private final List<CancellationHistoryRecord> completedHistoryRecords = new ArrayList<>();
     private static final DateTimeFormatter DATE_LABEL_FORMAT =
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
     private static final DateTimeFormatter CALENDAR_INPUT_FORMAT =
@@ -180,11 +183,13 @@ public class AdminDashboardFrame extends JFrame {
     private NavItem appointmentsNav;
     private NavItem patientsNav;
     private NavItem logNav;
+    private NavItem completedHistoryNav;
     private NavItem receptionistsNav;
 
     private JLabel apptTotalValue;
     private JLabel apptPendingValue;
     private JLabel apptCompletedValue;
+    private JLabel apptCancelledValue;
     private CardLayout appointmentModeLayout;
     private JPanel appointmentModePanel;
     private JPanel appointmentTableRows;
@@ -200,13 +205,13 @@ public class AdminDashboardFrame extends JFrame {
     private JLabel logTotalValue;
     private JLabel logCompletedValue;
     private JLabel logCancelledValue;
-    private JPanel logRows;
-    private TogglePill logAllToggle;
-    private TogglePill logCompletedToggle;
-    private TogglePill logCancelledToggle;
-    private JTextField logSearchField;
-    private String logFilter = "all";
-    private String logSearchQuery = "";
+    private JPanel cancellationHistoryRows;
+    private JTextField cancellationHistorySearchField;
+    private String cancellationHistorySearchQuery = "";
+    private JLabel completedHistoryTotalValue;
+    private JPanel completedHistoryRows;
+    private JTextField completedHistorySearchField;
+    private String completedHistorySearchQuery = "";
 
     private JLabel patientTotalValue;
     private JPanel patientRows;
@@ -228,7 +233,7 @@ public class AdminDashboardFrame extends JFrame {
     private JLabel dashboardTodayValue;
     private JLabel dashboardPendingValue;
     private JLabel dashboardCompletedValue;
-    private JLabel dashboardReceptionistsValue;
+    private JLabel dashboardCancelledValue;
     private JPanel dashboardTodayRows;
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JPanel contentHostPanel;
@@ -599,17 +604,17 @@ public class AdminDashboardFrame extends JFrame {
 
         previewPatientsCardTitleLabel.setFont(new java.awt.Font("Segoe UI", 1, 13)); // NOI18N
         previewPatientsCardTitleLabel.setForeground(new java.awt.Color(33, 47, 83));
-        previewPatientsCardTitleLabel.setText("Receptionist Accounts");
+        previewPatientsCardTitleLabel.setText("Cancelled");
         previewPatientsCardPanel.add(previewPatientsCardTitleLabel, java.awt.BorderLayout.NORTH);
 
         previewPatientsCardValueLabel.setFont(new java.awt.Font("Segoe UI", 1, 52)); // NOI18N
-        previewPatientsCardValueLabel.setForeground(new java.awt.Color(120, 80, 218));
+        previewPatientsCardValueLabel.setForeground(new java.awt.Color(224, 93, 93));
         previewPatientsCardValueLabel.setText("0");
         previewPatientsCardPanel.add(previewPatientsCardValueLabel, java.awt.BorderLayout.CENTER);
 
         previewPatientsCardSubLabel.setFont(new java.awt.Font("Segoe UI", 0, 12)); // NOI18N
         previewPatientsCardSubLabel.setForeground(new java.awt.Color(107, 124, 157));
-        previewPatientsCardSubLabel.setText("Total receptionist accounts");
+        previewPatientsCardSubLabel.setText("Cancelled appointments");
         previewPatientsCardPanel.add(previewPatientsCardSubLabel, java.awt.BorderLayout.SOUTH);
 
         previewStatsGridPanel.add(previewPatientsCardPanel);
@@ -704,6 +709,7 @@ public class AdminDashboardFrame extends JFrame {
         mainCardPanel.add(buildAppointmentsView(), VIEW_APPOINTMENTS);
         mainCardPanel.add(buildPatientsView(), VIEW_PATIENTS);
         mainCardPanel.add(buildLogView(), VIEW_LOG);
+        mainCardPanel.add(buildCompletedHistoryView(), VIEW_COMPLETED_HISTORY);
         if (!receptionistMode) {
             mainCardPanel.add(buildReceptionistsView(), VIEW_RECEPTIONISTS);
         }
@@ -744,7 +750,7 @@ public class AdminDashboardFrame extends JFrame {
         statsGrid.add(previewStatCard("Today's Appointments", "0", "No appointments today", new Color(57, 98, 226)));
         statsGrid.add(previewStatCard("Pending", "0", "Appointments pending", new Color(230, 148, 33)));
         statsGrid.add(previewStatCard("Completed", "0", "Appointments completed", new Color(45, 173, 94)));
-        statsGrid.add(previewStatCard("Receptionist Accounts", "0", "Total receptionist accounts", new Color(120, 80, 218)));
+        statsGrid.add(previewStatCard("Cancelled", "0", "Cancelled appointments", new Color(224, 93, 93)));
 
         body.add(statsGrid, BorderLayout.NORTH);
         body.add(previewAppointmentCard(), BorderLayout.CENTER);
@@ -878,6 +884,7 @@ public class AdminDashboardFrame extends JFrame {
         appointmentsNav = new NavItem("◫  Appointments", VIEW_APPOINTMENTS);
         patientsNav = new NavItem("◌  Patients", VIEW_PATIENTS);
         logNav = new NavItem("⊟  Cancellation History", VIEW_LOG);
+        completedHistoryNav = new NavItem("✓  Completed History", VIEW_COMPLETED_HISTORY);
         if (!receptionistMode) {
             receptionistsNav = new NavItem("◍  Receptionists", VIEW_RECEPTIONISTS);
         } else {
@@ -888,6 +895,7 @@ public class AdminDashboardFrame extends JFrame {
         attachNavBehavior(appointmentsNav, VIEW_APPOINTMENTS);
         attachNavBehavior(patientsNav, VIEW_PATIENTS);
         attachNavBehavior(logNav, VIEW_LOG);
+        attachNavBehavior(completedHistoryNav, VIEW_COMPLETED_HISTORY);
         if (!receptionistMode) {
             attachNavBehavior(receptionistsNav, VIEW_RECEPTIONISTS);
         }
@@ -899,6 +907,8 @@ public class AdminDashboardFrame extends JFrame {
         sidebar.add(patientsNav);
         sidebar.add(Box.createVerticalStrut(10));
         sidebar.add(logNav);
+        sidebar.add(Box.createVerticalStrut(10));
+        sidebar.add(completedHistoryNav);
         sidebar.add(Box.createVerticalStrut(10));
         if (!receptionistMode) {
             sidebar.add(receptionistsNav);
@@ -978,18 +988,12 @@ public class AdminDashboardFrame extends JFrame {
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBorder(BorderFactory.createEmptyBorder(22, 0, 0, 0));
 
-        int statsRows = receptionistMode ? 1 : 2;
-        int statsCols = receptionistMode ? 3 : 2;
-        JPanel stats = new JPanel(new GridLayout(statsRows, statsCols, 18, 18));
+        JPanel stats = new JPanel(new GridLayout(2, 2, 18, 18));
         stats.setOpaque(false);
         stats.add(statCard("Today's Appointments", valLabel(out -> dashboardTodayValue = out), "No appointments today", new Color(63, 101, 228), new Color(236, 240, 250)));
         stats.add(statCard("Pending", valLabel(out -> dashboardPendingValue = out), "Appointments pending", new Color(235, 153, 45), new Color(248, 240, 229)));
         stats.add(statCard("Completed", valLabel(out -> dashboardCompletedValue = out), "Appointments completed", new Color(46, 174, 102), new Color(232, 246, 238)));
-        if (!receptionistMode) {
-            stats.add(statCard("Receptionist Accounts", valLabel(out -> dashboardReceptionistsValue = out), "Total receptionist accounts", new Color(120, 80, 218), new Color(241, 234, 251)));
-        } else {
-            dashboardReceptionistsValue = null;
-        }
+        stats.add(statCard("Cancelled", valLabel(out -> dashboardCancelledValue = out), "Cancelled appointments", new Color(224, 93, 93), new Color(252, 236, 236)));
 
         RoundedPanel appointments = sectionCard();
         appointments.setLayout(new BorderLayout());
@@ -1047,13 +1051,14 @@ public class AdminDashboardFrame extends JFrame {
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBorder(BorderFactory.createEmptyBorder(22, 0, 0, 0));
 
-        JPanel summary = new JPanel(new GridLayout(1, 3, 18, 0));
+        JPanel summary = new JPanel(new GridLayout(1, 4, 18, 0));
         summary.setOpaque(false);
         summary.setMaximumSize(new Dimension(Integer.MAX_VALUE, 154));
         summary.setPreferredSize(new Dimension(1000, 154));
         summary.add(summaryCard("◫", "Total", valLabel(out -> apptTotalValue = out), new Color(63, 101, 228)));
         summary.add(summaryCard("◷", "Pending", valLabel(out -> apptPendingValue = out), new Color(235, 153, 45)));
         summary.add(summaryCard("✓", "Completed", valLabel(out -> apptCompletedValue = out), new Color(73, 190, 107)));
+        summary.add(summaryCard("✕", "Cancelled", valLabel(out -> apptCancelledValue = out), new Color(224, 93, 93)));
 
         RoundedPanel controlsCard = sectionCard();
         controlsCard.setLayout(new GridBagLayout());
@@ -1345,7 +1350,7 @@ public class AdminDashboardFrame extends JFrame {
     private JPanel buildLogView() {
         JPanel header = viewHeader(
             "Cancellation History",
-            "Deleted appointments are stored here",
+            "View cancelled appointment history",
             null,
             null
         );
@@ -1358,19 +1363,19 @@ public class AdminDashboardFrame extends JFrame {
         JPanel summary = new JPanel(new GridLayout(1, 3, 18, 0));
         summary.setOpaque(false);
         summary.setMaximumSize(new Dimension(Integer.MAX_VALUE, 154));
-        summary.add(summaryCard("◫", "Total Deleted", valLabel(out -> logTotalValue = out), new Color(20, 34, 58)));
-        summary.add(summaryCard("◷", "Deleted Today", valLabel(out -> logCompletedValue = out), new Color(73, 190, 107)));
-        summary.add(summaryCard("◌", "This Month", valLabel(out -> logCancelledValue = out), new Color(89, 103, 129)));
+        summary.add(summaryCard("◫", "Total History", valLabel(out -> logTotalValue = out), new Color(20, 34, 58)));
+        summary.add(summaryCard("✓", "Completed History", valLabel(out -> logCompletedValue = out), new Color(73, 190, 107)));
+        summary.add(summaryCard("✕", "Cancelled", valLabel(out -> logCancelledValue = out), new Color(224, 93, 93)));
 
         RoundedPanel controlsCard = sectionCard();
         controlsCard.setLayout(new BorderLayout());
         controlsCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
         controlsCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 132));
 
-        RoundedPanel searchBox = searchFieldBox("Search deleted records...");
-        logSearchField = (JTextField) searchBox.getClientProperty("searchField");
-        bindLiveSearch(logSearchField, () -> {
-            logSearchQuery = logSearchField.getText().trim().toLowerCase(Locale.ENGLISH);
+        RoundedPanel searchBox = searchFieldBox("Search cancellation records...");
+        cancellationHistorySearchField = (JTextField) searchBox.getClientProperty("searchField");
+        bindLiveSearch(cancellationHistorySearchField, () -> {
+            cancellationHistorySearchQuery = cancellationHistorySearchField.getText().trim().toLowerCase(Locale.ENGLISH);
             refreshLogRows();
         });
         searchBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
@@ -1382,15 +1387,81 @@ public class AdminDashboardFrame extends JFrame {
         tableCard.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
         applyFixedTableCardSize(tableCard, true);
 
-        logRows = new JPanel();
-        logRows.setOpaque(false);
-        logRows.setLayout(new BoxLayout(logRows, BoxLayout.Y_AXIS));
-        logRows.putClientProperty("qc.tableWidth", CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH);
-        logRows.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 10));
-        logRows.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
+        cancellationHistoryRows = new JPanel();
+        cancellationHistoryRows.setOpaque(false);
+        cancellationHistoryRows.setLayout(new BoxLayout(cancellationHistoryRows, BoxLayout.Y_AXIS));
+        cancellationHistoryRows.putClientProperty("qc.tableWidth", CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH);
+        cancellationHistoryRows.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 10));
+        cancellationHistoryRows.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
 
         JPanel headerRow = cancellationHistoryHeaderRow();
-        JScrollPane logScroll = tableRowsScrollPane(logRows, true);
+        JScrollPane logScroll = tableRowsScrollPane(cancellationHistoryRows, true);
+        logScroll.setColumnHeaderView(headerRow);
+        logScroll.getColumnHeader().setOpaque(false);
+        logScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
+        JPanel logHeaderCorner = new JPanel();
+        logHeaderCorner.setOpaque(false);
+        logScroll.setCorner(JScrollPane.UPPER_RIGHT_CORNER, logHeaderCorner);
+        logScroll.getVerticalScrollBar().setUnitIncrement(22);
+        logScroll.getVerticalScrollBar().setBlockIncrement(TABLE_ROW_HEIGHT + TABLE_ROW_GAP);
+
+        tableCard.add(horizontalScrollHintPanel(), BorderLayout.NORTH);
+        tableCard.add(logScroll, BorderLayout.CENTER);
+
+        body.add(summary);
+        body.add(Box.createVerticalStrut(18));
+        body.add(controlsCard);
+        body.add(Box.createVerticalStrut(18));
+        body.add(tableCard);
+        return wrapMainView(header, body);
+    }
+
+    private JPanel buildCompletedHistoryView() {
+        JPanel header = viewHeader(
+            "Completed History",
+            "View completed appointment history",
+            null,
+            null
+        );
+
+        JPanel body = new JPanel();
+        body.setOpaque(false);
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setBorder(BorderFactory.createEmptyBorder(22, 0, 0, 0));
+
+        JPanel summary = new JPanel(new GridLayout(1, 1, 18, 0));
+        summary.setOpaque(false);
+        summary.setMaximumSize(new Dimension(Integer.MAX_VALUE, 154));
+        summary.add(summaryCard("✓", "Total Completed History", valLabel(out -> completedHistoryTotalValue = out), new Color(73, 190, 107)));
+
+        RoundedPanel controlsCard = sectionCard();
+        controlsCard.setLayout(new BorderLayout());
+        controlsCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
+        controlsCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 132));
+
+        RoundedPanel searchBox = searchFieldBox("Search completed records...");
+        completedHistorySearchField = (JTextField) searchBox.getClientProperty("searchField");
+        bindLiveSearch(completedHistorySearchField, () -> {
+            completedHistorySearchQuery = completedHistorySearchField.getText().trim().toLowerCase(Locale.ENGLISH);
+            refreshCompletedHistoryRows();
+        });
+        searchBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
+        controlsCard.add(searchBox);
+
+        RoundedPanel tableCard = sectionCard();
+        tableCard.setLayout(new BorderLayout());
+        tableCard.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
+        applyFixedTableCardSize(tableCard, true);
+
+        completedHistoryRows = new JPanel();
+        completedHistoryRows.setOpaque(false);
+        completedHistoryRows.setLayout(new BoxLayout(completedHistoryRows, BoxLayout.Y_AXIS));
+        completedHistoryRows.putClientProperty("qc.tableWidth", CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH);
+        completedHistoryRows.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 10));
+        completedHistoryRows.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
+
+        JPanel headerRow = completedHistoryHeaderRow();
+        JScrollPane logScroll = tableRowsScrollPane(completedHistoryRows, true);
         logScroll.setColumnHeaderView(headerRow);
         logScroll.getColumnHeader().setOpaque(false);
         logScroll.getColumnHeader().setBackground(new Color(0, 0, 0, 0));
@@ -2828,6 +2899,7 @@ public class AdminDashboardFrame extends JFrame {
         patientRecords.clear();
         receptionistRecords.clear();
         cancellationHistoryRecords.clear();
+        completedHistoryRecords.clear();
 
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
@@ -2842,6 +2914,9 @@ public class AdminDashboardFrame extends JFrame {
             loadAppointmentsFromDatabase(con);
             loadReceptionistsFromDatabase(con);
             loadCancellationHistoryFromDatabase(con);
+            loadCompletedHistoryFromDatabase(con);
+            sortHistoryRecordsByTimestampDesc(cancellationHistoryRecords);
+            sortHistoryRecordsByTimestampDesc(completedHistoryRecords);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -3033,10 +3108,68 @@ public class AdminDashboardFrame extends JFrame {
                     safeText(rs.getString("allergies"), "N/A"),
                     safeText(rs.getString("notes"), ""),
                     safeText(rs.getString("deletion_reason"), "Deleted by user"),
-                    deletedAt
+                    deletedAt,
+                    "cancelled"
                 ));
             }
         }
+    }
+
+    private void loadCompletedHistoryFromDatabase(Connection con) throws SQLException {
+        String sql = "SELECT a.appointment_id, a.patient_id, " +
+            "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', " +
+            "NULLIF(TRIM(p.first_name), ''), NULLIF(TRIM(p.middle_name), ''), NULLIF(TRIM(p.last_name), '')" +
+            ")), ''), '(No patient)') AS patient_name, " +
+            "a.appointment_date, a.appointment_time, " +
+            "COALESCE(NULLIF(TRIM(a.reason), ''), '-') AS appointment_reason, " +
+            "COALESCE(NULLIF(TRIM(a.allergies), ''), 'N/A') AS allergies, " +
+            "COALESCE(a.notes, '') AS notes, " +
+            "COALESCE(a.created_at, CURRENT_TIMESTAMP) AS logged_at " +
+            "FROM appointment a " +
+            "LEFT JOIN patient p ON p.patient_id = a.patient_id " +
+            "WHERE a.status='completed'";
+        try (PreparedStatement pst = con.prepareStatement(sql);
+             ResultSet rs = pst.executeQuery()) {
+            while (rs.next()) {
+                Date appointmentDateValue = rs.getDate("appointment_date");
+                LocalDate appointmentDate = appointmentDateValue == null ? LocalDate.now() : appointmentDateValue.toLocalDate();
+                Time appointmentTimeValue = rs.getTime("appointment_time");
+                LocalTime appointmentTime = appointmentTimeValue == null
+                    ? LocalTime.of(9, 0)
+                    : appointmentTimeValue.toLocalTime().withSecond(0).withNano(0);
+                Timestamp loggedAtTs = rs.getTimestamp("logged_at");
+                LocalDateTime loggedAt = loggedAtTs == null ? LocalDateTime.now() : loggedAtTs.toLocalDateTime();
+                Object patientIdObj = rs.getObject("patient_id");
+                int patientId = patientIdObj == null ? -1 : rs.getInt("patient_id");
+                int appointmentId = rs.getInt("appointment_id");
+
+                completedHistoryRecords.add(new CancellationHistoryRecord(
+                    -Math.max(1, appointmentId),
+                    appointmentId,
+                    patientId,
+                    safeText(rs.getString("patient_name"), "(No patient)"),
+                    appointmentDate,
+                    appointmentTime,
+                    safeText(rs.getString("appointment_reason"), "-"),
+                    safeText(rs.getString("allergies"), "N/A"),
+                    safeText(rs.getString("notes"), ""),
+                    "Marked as completed",
+                    loggedAt,
+                    "completed"
+                ));
+            }
+        }
+    }
+
+    private void sortHistoryRecordsByTimestampDesc(List<CancellationHistoryRecord> records) {
+        if (records == null) {
+            return;
+        }
+        records.sort((a, b) -> {
+            LocalDateTime aTs = a == null || a.deletedAt == null ? LocalDateTime.MIN : a.deletedAt;
+            LocalDateTime bTs = b == null || b.deletedAt == null ? LocalDateTime.MIN : b.deletedAt;
+            return bTs.compareTo(aTs);
+        });
     }
 
     private AppointmentRecord fetchAppointmentRecordById(int appointmentId) {
@@ -5394,6 +5527,8 @@ public class AdminDashboardFrame extends JFrame {
         refreshPatientRows();
         refreshLogSummary();
         refreshLogRows();
+        refreshCompletedHistorySummary();
+        refreshCompletedHistoryRows();
         refreshReceptionistSummary();
         refreshReceptionistRows();
     }
@@ -5407,7 +5542,7 @@ public class AdminDashboardFrame extends JFrame {
         }
         int pending = countByStatus("pending");
         int completed = countByStatus("completed");
-        int receptionistAccounts = receptionistRecords.size();
+        int cancelled = countHistoryByStatus("cancelled");
 
         if (dashboardTodayValue != null) {
             dashboardTodayValue.setText(String.valueOf(todayTotal));
@@ -5418,8 +5553,8 @@ public class AdminDashboardFrame extends JFrame {
         if (dashboardCompletedValue != null) {
             dashboardCompletedValue.setText(String.valueOf(completed));
         }
-        if (dashboardReceptionistsValue != null) {
-            dashboardReceptionistsValue.setText(String.valueOf(receptionistAccounts));
+        if (dashboardCancelledValue != null) {
+            dashboardCancelledValue.setText(String.valueOf(cancelled));
         }
     }
 
@@ -5465,6 +5600,9 @@ public class AdminDashboardFrame extends JFrame {
         }
         if (apptCompletedValue != null) {
             apptCompletedValue.setText(String.valueOf(countByStatus("completed")));
+        }
+        if (apptCancelledValue != null) {
+            apptCancelledValue.setText(String.valueOf(countHistoryByStatus("cancelled")));
         }
     }
 
@@ -6016,66 +6154,91 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void refreshLogSummary() {
-        int totalDeleted = cancellationHistoryRecords.size();
-        int deletedToday = 0;
-        int deletedThisMonth = 0;
-        LocalDate today = LocalDate.now();
-
-        for (CancellationHistoryRecord record : cancellationHistoryRecords) {
-            if (record == null || record.deletedAt == null) {
-                continue;
-            }
-            LocalDate deletedDate = record.deletedAt.toLocalDate();
-            if (today.equals(deletedDate)) {
-                deletedToday++;
-            }
-            if (today.getYear() == deletedDate.getYear() && today.getMonth() == deletedDate.getMonth()) {
-                deletedThisMonth++;
-            }
-        }
+        int totalHistory = cancellationHistoryRecords.size() + completedHistoryRecords.size();
+        int completedCount = countHistoryByStatus("completed");
+        int cancelledCount = countHistoryByStatus("cancelled");
 
         if (logTotalValue != null) {
-            logTotalValue.setText(String.valueOf(totalDeleted));
+            logTotalValue.setText(String.valueOf(totalHistory));
         }
         if (logCompletedValue != null) {
-            logCompletedValue.setText(String.valueOf(deletedToday));
+            logCompletedValue.setText(String.valueOf(completedCount));
         }
         if (logCancelledValue != null) {
-            logCancelledValue.setText(String.valueOf(deletedThisMonth));
+            logCancelledValue.setText(String.valueOf(cancelledCount));
         }
     }
 
     private void refreshLogRows() {
-        if (logRows == null) {
+        if (cancellationHistoryRows == null) {
             return;
         }
 
-        logRows.removeAll();
+        cancellationHistoryRows.removeAll();
 
         List<CancellationHistoryRecord> filtered = new ArrayList<>();
         for (CancellationHistoryRecord record : cancellationHistoryRecords) {
-            if (matchesCancellationHistorySearch(record)) {
+            if (matchesCancellationHistorySearch(record, cancellationHistorySearchQuery)) {
                 filtered.add(record);
             }
         }
 
         if (filtered.isEmpty()) {
-            logRows.add(logEmptyStatePanel());
-            updateRowsPanelHeightFromChildren(logRows);
+            cancellationHistoryRows.add(logEmptyStatePanel());
+            updateRowsPanelHeightFromChildren(cancellationHistoryRows);
         } else {
             int i = 0;
             for (CancellationHistoryRecord record : filtered) {
                 if (i > 0) {
-                    logRows.add(Box.createVerticalStrut(TABLE_ROW_GAP));
+                    cancellationHistoryRows.add(Box.createVerticalStrut(TABLE_ROW_GAP));
                 }
-                logRows.add(cancellationHistoryRow(record));
+                cancellationHistoryRows.add(cancellationHistoryRow(record));
                 i++;
             }
-            updateRowsPanelHeightFromChildren(logRows);
+            updateRowsPanelHeightFromChildren(cancellationHistoryRows);
         }
 
-        logRows.revalidate();
-        logRows.repaint();
+        cancellationHistoryRows.revalidate();
+        cancellationHistoryRows.repaint();
+    }
+
+    private void refreshCompletedHistorySummary() {
+        if (completedHistoryTotalValue != null) {
+            completedHistoryTotalValue.setText(String.valueOf(completedHistoryRecords.size()));
+        }
+    }
+
+    private void refreshCompletedHistoryRows() {
+        if (completedHistoryRows == null) {
+            return;
+        }
+
+        completedHistoryRows.removeAll();
+
+        List<CancellationHistoryRecord> filtered = new ArrayList<>();
+        for (CancellationHistoryRecord record : completedHistoryRecords) {
+            if (matchesCancellationHistorySearch(record, completedHistorySearchQuery)) {
+                filtered.add(record);
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            completedHistoryRows.add(logEmptyStatePanel());
+            updateRowsPanelHeightFromChildren(completedHistoryRows);
+        } else {
+            int i = 0;
+            for (CancellationHistoryRecord record : filtered) {
+                if (i > 0) {
+                    completedHistoryRows.add(Box.createVerticalStrut(TABLE_ROW_GAP));
+                }
+                completedHistoryRows.add(cancellationHistoryRow(record));
+                i++;
+            }
+            updateRowsPanelHeightFromChildren(completedHistoryRows);
+        }
+
+        completedHistoryRows.revalidate();
+        completedHistoryRows.repaint();
     }
 
     private JPanel cancellationHistoryRow(CancellationHistoryRecord record) {
@@ -6120,22 +6283,35 @@ public class AdminDashboardFrame extends JFrame {
         addCancellationHistoryTableGridCell(row, detailsCell, 4, GridBagConstraints.NORTHWEST);
 
         JPanel deletionReasonCell = appointmentWrappedTextCell(
-            safeText(record.deletionReason, "Deleted by user"),
+            safeText(record.deletionReason, "-"),
             cancellationHistoryColumnWidth(5) - 10
         );
         addCancellationHistoryTableGridCell(row, deletionReasonCell, 5, GridBagConstraints.NORTHWEST);
 
-        JButton rescheduleButton = softActionButton("Reschedule", new Color(231, 246, 236), new Color(46, 174, 102));
-        rescheduleButton.setPreferredSize(new Dimension(140, 32));
-        rescheduleButton.setMinimumSize(new Dimension(140, 32));
-        rescheduleButton.setMaximumSize(new Dimension(140, 32));
-        rescheduleButton.setMargin(new Insets(0, 12, 0, 12));
-        rescheduleButton.addActionListener(e -> openRescheduleFromHistoryDialog(record));
-        addCancellationHistoryTableGridCell(row, rescheduleButton, 6, GridBagConstraints.CENTER);
+        JPanel statusCell = statusBadge(safeText(record.status, "pending"));
+        addCancellationHistoryTableGridCell(row, statusCell, 6, GridBagConstraints.CENTER);
+
+        JComponent actionComponent;
+        if ("cancelled".equals(record.status)) {
+            JButton rescheduleButton = softActionButton("Reschedule", new Color(231, 246, 236), new Color(46, 174, 102));
+            rescheduleButton.setPreferredSize(new Dimension(140, 32));
+            rescheduleButton.setMinimumSize(new Dimension(140, 32));
+            rescheduleButton.setMaximumSize(new Dimension(140, 32));
+            rescheduleButton.setMargin(new Insets(0, 12, 0, 12));
+            rescheduleButton.addActionListener(e -> openRescheduleFromHistoryDialog(record));
+            actionComponent = rescheduleButton;
+        } else {
+            JLabel noActionLabel = rowLabel("-");
+            noActionLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            noActionLabel.setForeground(new Color(132, 145, 170));
+            actionComponent = noActionLabel;
+        }
+        addCancellationHistoryTableGridCell(row, actionComponent, 7, GridBagConstraints.CENTER);
 
         int wrappedHeight = Math.max(detailsCell.getPreferredSize().height, deletionReasonCell.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, patientCell.getPreferredSize().height);
-        wrappedHeight = Math.max(wrappedHeight, rescheduleButton.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, actionComponent.getPreferredSize().height);
         int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 22);
         row.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, dynamicHeight));
@@ -6144,8 +6320,8 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void setLogFilter(String filter) {
-        logFilter = filter;
         refreshLogRows();
+        refreshCompletedHistoryRows();
     }
 
     private void refreshReceptionistSummary() {
@@ -6985,17 +7161,8 @@ public class AdminDashboardFrame extends JFrame {
         return haystack.contains(patientSearchQuery);
     }
 
-    private boolean matchesLogSearch(AppointmentRecord record) {
-        if (logSearchQuery.isBlank()) {
-            return true;
-        }
-        String haystack = (record.patientName + " " + record.reason + " " + record.allergies + " " + record.notes + " " + record.cancelReason + " " + record.dateText + " " + record.timeText)
-            .toLowerCase(Locale.ENGLISH);
-        return haystack.contains(logSearchQuery);
-    }
-
-    private boolean matchesCancellationHistorySearch(CancellationHistoryRecord record) {
-        if (logSearchQuery.isBlank()) {
+    private boolean matchesCancellationHistorySearch(CancellationHistoryRecord record, String searchQuery) {
+        if (searchQuery == null || searchQuery.isBlank()) {
             return true;
         }
         String deletedAtText = record.deletedAt == null
@@ -7013,11 +7180,12 @@ public class AdminDashboardFrame extends JFrame {
             safeText(record.allergies, "") + " " +
             safeText(record.notes, "") + " " +
             safeText(record.deletionReason, "") + " " +
+            safeText(record.status, "") + " " +
             deletedAtText + " " +
             appointmentDateText + " " +
             appointmentTimeText
         ).toLowerCase(Locale.ENGLISH);
-        return haystack.contains(logSearchQuery);
+        return haystack.contains(searchQuery);
     }
 
     private boolean matchesReceptionistSearch(ReceptionistRecord record) {
@@ -7033,6 +7201,21 @@ public class AdminDashboardFrame extends JFrame {
         int count = 0;
         for (AppointmentRecord record : appointmentRecords) {
             if (status.equals(record.status)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int countHistoryByStatus(String status) {
+        int count = 0;
+        for (CancellationHistoryRecord record : cancellationHistoryRecords) {
+            if (record != null && status.equals(record.status)) {
+                count++;
+            }
+        }
+        for (CancellationHistoryRecord record : completedHistoryRecords) {
+            if (record != null && status.equals(record.status)) {
                 count++;
             }
         }
@@ -7279,10 +7462,41 @@ public class AdminDashboardFrame extends JFrame {
         addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Time"), 2, GridBagConstraints.WEST);
         addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Patient Name"), 3, GridBagConstraints.WEST);
         addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Appointment Details"), 4, GridBagConstraints.WEST);
-        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Reason For Deletion"), 5, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("History Note"), 5, GridBagConstraints.WEST);
+        JLabel statusHeader = appointmentHeaderLabel("Status");
+        statusHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addCancellationHistoryTableGridCell(header, statusHeader, 6, GridBagConstraints.CENTER);
         JLabel actionsHeader = appointmentHeaderLabel("Actions");
         actionsHeader.setHorizontalAlignment(SwingConstants.CENTER);
-        addCancellationHistoryTableGridCell(header, actionsHeader, 6, GridBagConstraints.CENTER);
+        addCancellationHistoryTableGridCell(header, actionsHeader, 7, GridBagConstraints.CENTER);
+        return header;
+    }
+
+    private JPanel completedHistoryHeaderRow() {
+        RoundedPanel header = new RoundedPanel(12, new Color(243, 247, 255));
+        header.setLayout(new GridBagLayout());
+        header.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
+            )
+        );
+        header.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 46));
+        header.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 46));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
+
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Completed At"), 0, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Date"), 1, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Time"), 2, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Patient Name"), 3, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Appointment Details"), 4, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("History Note"), 5, GridBagConstraints.WEST);
+        JLabel statusHeader = appointmentHeaderLabel("Status");
+        statusHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addCancellationHistoryTableGridCell(header, statusHeader, 6, GridBagConstraints.CENTER);
+        JLabel actionsHeader = appointmentHeaderLabel("Actions");
+        actionsHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addCancellationHistoryTableGridCell(header, actionsHeader, 7, GridBagConstraints.CENTER);
         return header;
     }
 
@@ -7796,12 +8010,16 @@ public class AdminDashboardFrame extends JFrame {
         appointmentsNav.setActive(VIEW_APPOINTMENTS.equals(view));
         patientsNav.setActive(VIEW_PATIENTS.equals(view));
         logNav.setActive(VIEW_LOG.equals(view));
+        completedHistoryNav.setActive(VIEW_COMPLETED_HISTORY.equals(view));
         if (receptionistsNav != null) {
             receptionistsNav.setActive(VIEW_RECEPTIONISTS.equals(view));
         }
 
         if (VIEW_LOG.equals(view)) {
             refreshLogRows();
+        }
+        if (VIEW_COMPLETED_HISTORY.equals(view)) {
+            refreshCompletedHistoryRows();
         }
         if (VIEW_APPOINTMENTS.equals(view)) {
             refreshAppointmentCalendarHeader();
@@ -7919,6 +8137,7 @@ public class AdminDashboardFrame extends JFrame {
         final String notes;
         final String deletionReason;
         final LocalDateTime deletedAt;
+        final String status;
 
         CancellationHistoryRecord(
             int historyId,
@@ -7931,7 +8150,8 @@ public class AdminDashboardFrame extends JFrame {
             String allergies,
             String notes,
             String deletionReason,
-            LocalDateTime deletedAt
+            LocalDateTime deletedAt,
+            String status
         ) {
             this.historyId = historyId;
             this.appointmentId = appointmentId;
@@ -7944,6 +8164,7 @@ public class AdminDashboardFrame extends JFrame {
             this.notes = notes;
             this.deletionReason = deletionReason;
             this.deletedAt = deletedAt;
+            this.status = status;
         }
     }
 
