@@ -6,9 +6,12 @@ import java.sql.SQLException;
 
 public class DBConnection {
 
-    private static final String URL = "jdbc:mysql://localhost:3306/quickclinic_db";
+    private static final String URL = "jdbc:mysql://127.0.0.1:3306/quickclinic_db";
     private static final String USER = "root";
-    private static final String PASSWORD = "";
+    // Default local XAMPP password; can be overridden with env var QC_DB_PASSWORD.
+    private static final String PASSWORD = System.getenv("QC_DB_PASSWORD") != null
+        ? System.getenv("QC_DB_PASSWORD")
+        : "150043";
 
     public static Connection getConnection() {
         try {

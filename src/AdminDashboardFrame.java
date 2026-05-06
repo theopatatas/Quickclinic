@@ -22,6 +22,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
 import java.time.format.DateTimeFormatter;
@@ -76,8 +77,8 @@ public class AdminDashboardFrame extends JFrame {
     private static final String VIEW_LOG = "log";
     private static final String VIEW_RECEPTIONISTS = "receptionists";
     private static final int TABLE_VISIBLE_ROWS = 4;
-    private static final int TABLE_ROW_HEIGHT = 96;
-    private static final int TABLE_ROW_GAP = 8;
+    private static final int TABLE_ROW_HEIGHT = 84;
+    private static final int TABLE_ROW_GAP = 6;
     private static final int DASHBOARD_TODAY_VISIBLE_ROWS = 6;
     private static final int DASHBOARD_TODAY_ROW_HEIGHT = 74;
     private static final int DASHBOARD_TODAY_ROW_GAP = 8;
@@ -88,6 +89,14 @@ public class AdminDashboardFrame extends JFrame {
     private static final int APPOINTMENT_DURATION_MINUTES = 60;
     private static final String TIME_SLOT_BOOKED_MESSAGE =
         "This time slot is already booked. Please choose another time.";
+    private static final String[] APPOINTMENT_REASON_OPTIONS = {
+        "Tooth Cleaning",
+        "Tooth Change",
+        "Tooth Extraction",
+        "Dental Checkup",
+        "Braces",
+        "Others"
+    };
     private static final int[] APPOINTMENT_TABLE_COLUMN_WIDTHS = {
         120, // Date
         90,  // Time
@@ -118,8 +127,18 @@ public class AdminDashboardFrame extends JFrame {
         150  // Actions
     };
     private static final int RECEPTIONIST_TABLE_TOTAL_WIDTH = 1200;
+    private static final int[] CANCELLATION_HISTORY_COLUMN_WIDTHS = {
+        150, // Deleted At
+        110, // Date
+        90,  // Time
+        180, // Patient Name
+        420, // Appointment Details
+        260, // Deletion Reason
+        170  // Actions
+    };
+    private static final int CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH = 1380;
     private static final int TABLE_SCROLL_HEIGHT =
-        (TABLE_VISIBLE_ROWS * TABLE_ROW_HEIGHT) + ((TABLE_VISIBLE_ROWS - 1) * TABLE_ROW_GAP) + 20;
+        (TABLE_VISIBLE_ROWS * TABLE_ROW_HEIGHT) + ((TABLE_VISIBLE_ROWS - 1) * TABLE_ROW_GAP) + 16;
     private static final Color INPUT_BORDER_COLOR = new Color(210, 220, 236);
     private static final Color INPUT_ERROR_BORDER_COLOR = new Color(224, 93, 93);
     private static final Color INPUT_FOCUS_BORDER_COLOR = new Color(102, 134, 239);
@@ -130,6 +149,7 @@ public class AdminDashboardFrame extends JFrame {
     private final List<AppointmentRecord> appointmentRecords = new ArrayList<>();
     private final List<PatientRecord> patientRecords = new ArrayList<>();
     private final List<ReceptionistRecord> receptionistRecords = new ArrayList<>();
+    private final List<CancellationHistoryRecord> cancellationHistoryRecords = new ArrayList<>();
     private static final DateTimeFormatter DATE_LABEL_FORMAT =
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
     private static final DateTimeFormatter CALENDAR_INPUT_FORMAT =
@@ -150,6 +170,8 @@ public class AdminDashboardFrame extends JFrame {
         DateTimeFormatter.ofPattern("MM/dd/yy", Locale.ENGLISH);
     private static final DateTimeFormatter APPOINTMENT_CALENDAR_TITLE_FORMAT =
         DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH);
+    private static final DateTimeFormatter CANCELLATION_DELETED_AT_FORMAT =
+        DateTimeFormatter.ofPattern("MM/dd/yy h:mm a", Locale.ENGLISH);
 
     private CardLayout mainCardLayout;
     private JPanel mainCardPanel;
@@ -855,7 +877,7 @@ public class AdminDashboardFrame extends JFrame {
         dashboardNav = new NavItem("▦  Dashboard", VIEW_DASHBOARD);
         appointmentsNav = new NavItem("◫  Appointments", VIEW_APPOINTMENTS);
         patientsNav = new NavItem("◌  Patients", VIEW_PATIENTS);
-        logNav = new NavItem("⊟  Logs", VIEW_LOG);
+        logNav = new NavItem("⊟  Cancellation History", VIEW_LOG);
         if (!receptionistMode) {
             receptionistsNav = new NavItem("◍  Receptionists", VIEW_RECEPTIONISTS);
         } else {
@@ -1322,8 +1344,8 @@ public class AdminDashboardFrame extends JFrame {
 
     private JPanel buildLogView() {
         JPanel header = viewHeader(
-            "Logs / Archive",
-            "Completed and cancelled appointments are archived here",
+            "Cancellation History",
+            "Deleted appointments are stored here",
             null,
             null
         );
@@ -1336,16 +1358,16 @@ public class AdminDashboardFrame extends JFrame {
         JPanel summary = new JPanel(new GridLayout(1, 3, 18, 0));
         summary.setOpaque(false);
         summary.setMaximumSize(new Dimension(Integer.MAX_VALUE, 154));
-        summary.add(summaryCard("◫", "Total Logged", valLabel(out -> logTotalValue = out), new Color(20, 34, 58)));
-        summary.add(summaryCard("✓", "Completed", valLabel(out -> logCompletedValue = out), new Color(73, 190, 107)));
-        summary.add(summaryCard("✕", "Cancelled", valLabel(out -> logCancelledValue = out), new Color(224, 93, 93)));
+        summary.add(summaryCard("◫", "Total Deleted", valLabel(out -> logTotalValue = out), new Color(20, 34, 58)));
+        summary.add(summaryCard("◷", "Deleted Today", valLabel(out -> logCompletedValue = out), new Color(73, 190, 107)));
+        summary.add(summaryCard("◌", "This Month", valLabel(out -> logCancelledValue = out), new Color(89, 103, 129)));
 
         RoundedPanel controlsCard = sectionCard();
-        controlsCard.setLayout(new BoxLayout(controlsCard, BoxLayout.X_AXIS));
+        controlsCard.setLayout(new BorderLayout());
         controlsCard.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
         controlsCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 132));
 
-        RoundedPanel searchBox = searchFieldBox("Search by patient name or reason...");
+        RoundedPanel searchBox = searchFieldBox("Search deleted records...");
         logSearchField = (JTextField) searchBox.getClientProperty("searchField");
         bindLiveSearch(logSearchField, () -> {
             logSearchQuery = logSearchField.getText().trim().toLowerCase(Locale.ENGLISH);
@@ -1353,39 +1375,7 @@ public class AdminDashboardFrame extends JFrame {
         });
         searchBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
 
-        logAllToggle = new TogglePill("All");
-        logCompletedToggle = new TogglePill("Completed");
-        logCancelledToggle = new TogglePill("Cancelled");
-        logAllToggle.setMaximumSize(new Dimension(120, 64));
-        logCompletedToggle.setMaximumSize(new Dimension(180, 64));
-        logCancelledToggle.setMaximumSize(new Dimension(160, 64));
-
-        logAllToggle.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                setLogFilter("all");
-            }
-        });
-        logCompletedToggle.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                setLogFilter("completed");
-            }
-        });
-        logCancelledToggle.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                setLogFilter("cancelled");
-            }
-        });
-
         controlsCard.add(searchBox);
-        controlsCard.add(Box.createHorizontalStrut(12));
-        controlsCard.add(logAllToggle);
-        controlsCard.add(Box.createHorizontalStrut(10));
-        controlsCard.add(logCompletedToggle);
-        controlsCard.add(Box.createHorizontalStrut(10));
-        controlsCard.add(logCancelledToggle);
 
         RoundedPanel tableCard = sectionCard();
         tableCard.setLayout(new BorderLayout());
@@ -1395,11 +1385,11 @@ public class AdminDashboardFrame extends JFrame {
         logRows = new JPanel();
         logRows.setOpaque(false);
         logRows.setLayout(new BoxLayout(logRows, BoxLayout.Y_AXIS));
-        logRows.putClientProperty("qc.tableWidth", APPOINTMENT_TABLE_TOTAL_WIDTH);
-        logRows.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 10));
-        logRows.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
+        logRows.putClientProperty("qc.tableWidth", CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH);
+        logRows.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 10));
+        logRows.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, TABLE_SCROLL_HEIGHT));
 
-        JPanel headerRow = appointmentTableHeaderRow();
+        JPanel headerRow = cancellationHistoryHeaderRow();
         JScrollPane logScroll = tableRowsScrollPane(logRows, true);
         logScroll.setColumnHeaderView(headerRow);
         logScroll.getColumnHeader().setOpaque(false);
@@ -2023,6 +2013,20 @@ public class AdminDashboardFrame extends JFrame {
                 "notes VARCHAR(500) NULL)"
             );
             st.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS cancellation_history (" +
+                "history_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                "appointment_id INT NULL, " +
+                "patient_id INT NULL, " +
+                "patient_name VARCHAR(255) NOT NULL, " +
+                "appointment_date DATE NOT NULL, " +
+                "appointment_time TIME NOT NULL, " +
+                "appointment_reason VARCHAR(255) NOT NULL, " +
+                "allergies VARCHAR(255) NULL, " +
+                "notes VARCHAR(500) NULL, " +
+                "deletion_reason VARCHAR(255) NOT NULL, " +
+                "deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            );
+            st.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS account (" +
                 "account_id INT AUTO_INCREMENT PRIMARY KEY, " +
                 "username VARCHAR(80) NOT NULL UNIQUE, " +
@@ -2034,6 +2038,8 @@ public class AdminDashboardFrame extends JFrame {
         ensurePatientTableStructure(con);
         ensureDentistTableStructure(con);
         ensureAppointmentTableStructure(con);
+        ensureCancellationHistoryTableStructure(con);
+        migrateCancelledAppointmentsToCancellationHistory(con);
         ensureAccountTableStructure(con);
         ensureAppointmentForeignKeys(con);
     }
@@ -2226,6 +2232,122 @@ public class AdminDashboardFrame extends JFrame {
                 "UPDATE appointment a LEFT JOIN dentist d ON d.dentist_id = a.dentist_id " +
                 "SET a.dentist_id=NULL WHERE a.dentist_id IS NOT NULL AND d.dentist_id IS NULL"
             );
+        }
+    }
+
+    private void ensureCancellationHistoryTableStructure(Connection con) throws SQLException {
+        Set<String> columns = getTableColumns(con, "cancellation_history");
+        if (columns.isEmpty()) {
+            return;
+        }
+        if (!columns.contains("appointment_id")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN appointment_id INT NULL");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("patient_id")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN patient_id INT NULL");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("patient_name")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN patient_name VARCHAR(255) NOT NULL DEFAULT '(No patient)'");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("appointment_date")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN appointment_date DATE NULL");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("appointment_time")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN appointment_time TIME NULL");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("appointment_reason")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN appointment_reason VARCHAR(255) NOT NULL DEFAULT ''");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("allergies")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN allergies VARCHAR(255) NULL");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("notes")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN notes VARCHAR(500) NULL");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("deletion_reason")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN deletion_reason VARCHAR(255) NOT NULL DEFAULT 'Deleted by user'");
+            }
+        }
+        columns = getTableColumns(con, "cancellation_history");
+        if (!columns.contains("deleted_at")) {
+            try (Statement st = con.createStatement()) {
+                st.executeUpdate("ALTER TABLE cancellation_history ADD COLUMN deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+            }
+        }
+
+        try (Statement st = con.createStatement()) {
+            st.executeUpdate(
+                "UPDATE cancellation_history SET patient_name='(No patient)' " +
+                "WHERE patient_name IS NULL OR TRIM(patient_name)=''"
+            );
+            st.executeUpdate(
+                "UPDATE cancellation_history SET appointment_reason='-' " +
+                "WHERE appointment_reason IS NULL OR TRIM(appointment_reason)=''"
+            );
+            st.executeUpdate(
+                "UPDATE cancellation_history SET allergies='N/A' " +
+                "WHERE allergies IS NULL OR TRIM(allergies)=''"
+            );
+            st.executeUpdate(
+                "UPDATE cancellation_history SET notes='' " +
+                "WHERE notes IS NULL"
+            );
+            st.executeUpdate(
+                "UPDATE cancellation_history SET deletion_reason='Deleted by user' " +
+                "WHERE deletion_reason IS NULL OR TRIM(deletion_reason)=''"
+            );
+            st.executeUpdate(
+                "UPDATE cancellation_history SET deleted_at=CURRENT_TIMESTAMP " +
+                "WHERE deleted_at IS NULL"
+            );
+        }
+    }
+
+    private void migrateCancelledAppointmentsToCancellationHistory(Connection con) throws SQLException {
+        String insertSql =
+            "INSERT INTO cancellation_history " +
+            "(appointment_id, patient_id, patient_name, appointment_date, appointment_time, appointment_reason, allergies, notes, deletion_reason, deleted_at) " +
+            "SELECT a.appointment_id, a.patient_id, " +
+            "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', " +
+            "NULLIF(TRIM(p.first_name), ''), NULLIF(TRIM(p.middle_name), ''), NULLIF(TRIM(p.last_name), '')" +
+            ")), ''), '(No patient)') AS patient_name, " +
+            "a.appointment_date, a.appointment_time, COALESCE(a.reason, '-'), " +
+            "COALESCE(NULLIF(TRIM(a.allergies), ''), 'N/A'), COALESCE(a.notes, ''), " +
+            "COALESCE(NULLIF(TRIM(a.cancel_reason), ''), 'Cancelled by user'), COALESCE(a.created_at, CURRENT_TIMESTAMP) " +
+            "FROM appointment a " +
+            "LEFT JOIN patient p ON p.patient_id = a.patient_id " +
+            "LEFT JOIN cancellation_history h ON h.appointment_id = a.appointment_id " +
+            "WHERE a.status='cancelled' AND h.history_id IS NULL";
+
+        String deleteSql = "DELETE FROM appointment WHERE status='cancelled'";
+        try (Statement st = con.createStatement()) {
+            st.executeUpdate(insertSql);
+            st.executeUpdate(deleteSql);
         }
     }
 
@@ -2705,6 +2827,7 @@ public class AdminDashboardFrame extends JFrame {
         appointmentRecords.clear();
         patientRecords.clear();
         receptionistRecords.clear();
+        cancellationHistoryRecords.clear();
 
         try (Connection con = DBConnection.getConnection()) {
             if (con == null) {
@@ -2718,6 +2841,7 @@ public class AdminDashboardFrame extends JFrame {
             loadPatientsFromDatabase(con);
             loadAppointmentsFromDatabase(con);
             loadReceptionistsFromDatabase(con);
+            loadCancellationHistoryFromDatabase(con);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -2870,6 +2994,47 @@ public class AdminDashboardFrame extends JFrame {
                     }
                 }
                 receptionistRecords.add(new ReceptionistRecord(pk, accountCode, displayName, username, status, createdText));
+            }
+        }
+    }
+
+    private void loadCancellationHistoryFromDatabase(Connection con) throws SQLException {
+        String sql = "SELECT history_id, appointment_id, patient_id, patient_name, appointment_date, appointment_time, " +
+            "appointment_reason, COALESCE(NULLIF(TRIM(allergies), ''), 'N/A') AS allergies, " +
+            "COALESCE(notes, '') AS notes, COALESCE(NULLIF(TRIM(deletion_reason), ''), 'Deleted by user') AS deletion_reason, " +
+            "deleted_at " +
+            "FROM cancellation_history ORDER BY deleted_at DESC, history_id DESC";
+        try (PreparedStatement pst = con.prepareStatement(sql);
+             ResultSet rs = pst.executeQuery()) {
+            while (rs.next()) {
+                Date appointmentDateValue = rs.getDate("appointment_date");
+                LocalDate appointmentDate = appointmentDateValue == null ? LocalDate.now() : appointmentDateValue.toLocalDate();
+                Time appointmentTimeValue = rs.getTime("appointment_time");
+                LocalTime appointmentTime = appointmentTimeValue == null
+                    ? LocalTime.of(9, 0)
+                    : appointmentTimeValue.toLocalTime().withSecond(0).withNano(0);
+
+                Timestamp deletedAtTs = rs.getTimestamp("deleted_at");
+                LocalDateTime deletedAt = deletedAtTs == null ? LocalDateTime.now() : deletedAtTs.toLocalDateTime();
+
+                Object patientIdObj = rs.getObject("patient_id");
+                int patientId = patientIdObj == null ? -1 : rs.getInt("patient_id");
+                Object appointmentIdObj = rs.getObject("appointment_id");
+                int appointmentId = appointmentIdObj == null ? -1 : rs.getInt("appointment_id");
+
+                cancellationHistoryRecords.add(new CancellationHistoryRecord(
+                    rs.getInt("history_id"),
+                    appointmentId,
+                    patientId,
+                    safeText(rs.getString("patient_name"), "(No patient)"),
+                    appointmentDate,
+                    appointmentTime,
+                    safeText(rs.getString("appointment_reason"), "-"),
+                    safeText(rs.getString("allergies"), "N/A"),
+                    safeText(rs.getString("notes"), ""),
+                    safeText(rs.getString("deletion_reason"), "Deleted by user"),
+                    deletedAt
+                ));
             }
         }
     }
@@ -3352,6 +3517,122 @@ public class AdminDashboardFrame extends JFrame {
         }
     }
 
+    private boolean archiveAndDeleteAppointment(int appointmentId, String deletionReason) {
+        String normalizedDeletionReason = safeText(deletionReason, "").trim();
+        if (normalizedDeletionReason.isBlank()) {
+            normalizedDeletionReason = "Deleted by user";
+        }
+
+        String readSql = "SELECT a.appointment_id, a.patient_id, " +
+            "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', " +
+            "NULLIF(TRIM(p.first_name), ''), " +
+            "NULLIF(TRIM(p.middle_name), ''), " +
+            "NULLIF(TRIM(p.last_name), '')" +
+            ")), ''), '(No patient)') AS patient_name, " +
+            "a.appointment_date, a.appointment_time, a.reason, " +
+            "COALESCE(NULLIF(TRIM(a.allergies), ''), 'N/A') AS allergies, " +
+            "COALESCE(a.notes, '') AS notes " +
+            "FROM appointment a " +
+            "LEFT JOIN patient p ON p.patient_id = a.patient_id " +
+            "WHERE a.appointment_id=?";
+        String insertHistorySql = "INSERT INTO cancellation_history " +
+            "(appointment_id, patient_id, patient_name, appointment_date, appointment_time, appointment_reason, allergies, notes, deletion_reason) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String deleteSql = "DELETE FROM appointment WHERE appointment_id=?";
+
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return false;
+            }
+            ensureClinicTables(con);
+            boolean originalAutoCommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                Integer linkedPatientId = null;
+                String patientName = "(No patient)";
+                LocalDate appointmentDate = null;
+                LocalTime appointmentTime = null;
+                String appointmentReason = "-";
+                String allergies = "N/A";
+                String notes = "";
+
+                try (PreparedStatement readPst = con.prepareStatement(readSql)) {
+                    readPst.setInt(1, appointmentId);
+                    try (ResultSet rs = readPst.executeQuery()) {
+                        if (!rs.next()) {
+                            con.rollback();
+                            return false;
+                        }
+                        Object patientObj = rs.getObject("patient_id");
+                        if (patientObj != null) {
+                            linkedPatientId = rs.getInt("patient_id");
+                        }
+                        patientName = safeText(rs.getString("patient_name"), "(No patient)");
+                        Date dateValue = rs.getDate("appointment_date");
+                        Time timeValue = rs.getTime("appointment_time");
+                        appointmentDate = dateValue == null ? null : dateValue.toLocalDate();
+                        appointmentTime = timeValue == null ? null : timeValue.toLocalTime().withSecond(0).withNano(0);
+                        appointmentReason = safeText(rs.getString("reason"), "-");
+                        allergies = safeText(rs.getString("allergies"), "N/A");
+                        notes = safeText(rs.getString("notes"), "");
+                    }
+                }
+
+                if (appointmentDate == null || appointmentTime == null) {
+                    con.rollback();
+                    return false;
+                }
+
+                try (PreparedStatement insertPst = con.prepareStatement(insertHistorySql)) {
+                    insertPst.setInt(1, appointmentId);
+                    if (linkedPatientId == null || linkedPatientId <= 0) {
+                        insertPst.setNull(2, Types.INTEGER);
+                    } else {
+                        insertPst.setInt(2, linkedPatientId);
+                    }
+                    insertPst.setString(3, patientName);
+                    insertPst.setDate(4, Date.valueOf(appointmentDate));
+                    insertPst.setTime(5, Time.valueOf(appointmentTime));
+                    insertPst.setString(6, appointmentReason);
+                    insertPst.setString(7, allergies);
+                    insertPst.setString(8, notes);
+                    insertPst.setString(9, normalizedDeletionReason);
+                    if (insertPst.executeUpdate() <= 0) {
+                        con.rollback();
+                        return false;
+                    }
+                }
+
+                try (PreparedStatement deletePst = con.prepareStatement(deleteSql)) {
+                    deletePst.setInt(1, appointmentId);
+                    if (deletePst.executeUpdate() <= 0) {
+                        con.rollback();
+                        return false;
+                    }
+                }
+
+                con.commit();
+                return true;
+            } catch (SQLException e) {
+                try {
+                    con.rollback();
+                } catch (SQLException ignored) {
+                    // Keep original exception.
+                }
+                throw e;
+            } finally {
+                try {
+                    con.setAutoCommit(originalAutoCommit);
+                } catch (SQLException ignored) {
+                    // No-op.
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     private boolean updateAppointmentDetailsInDatabase(
         int appointmentId,
         int linkedPatientId,
@@ -3500,6 +3781,297 @@ public class AdminDashboardFrame extends JFrame {
             JOptionPane.QUESTION_MESSAGE
         );
         return result == JOptionPane.YES_OPTION;
+    }
+
+    private boolean confirmAppointmentDelete() {
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            "Are you sure you want to cancel this appointment?",
+            "Confirm Cancel",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE
+        );
+        return result == JOptionPane.YES_OPTION;
+    }
+
+    private void openRescheduleFromHistoryDialog(CancellationHistoryRecord record) {
+        if (record == null) {
+            return;
+        }
+
+        JDateChooser datePicker = new JDateChooser();
+        datePicker.setDateFormatString("MM/dd/yyyy");
+        LocalDate allowedStartDate = LocalDate.now();
+        LocalDate allowedEndDate = allowedStartDate.withDayOfMonth(allowedStartDate.lengthOfMonth());
+        LocalDate seedDate = record.appointmentDate == null ? allowedStartDate : record.appointmentDate;
+        if (seedDate.isBefore(allowedStartDate) || seedDate.isAfter(allowedEndDate)) {
+            seedDate = allowedStartDate;
+        }
+        datePicker.setMinSelectableDate(Date.valueOf(allowedStartDate));
+        datePicker.setMaxSelectableDate(Date.valueOf(allowedEndDate));
+        datePicker.setDate(Date.valueOf(seedDate));
+        styleDateChooserField(datePicker);
+
+        JComboBox<String> timeSelector = new JComboBox<>(buildAppointmentTimeOptions());
+        applyDefaultFieldBorder(timeSelector);
+        timeSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        timeSelector.setBackground(Color.WHITE);
+        timeSelector.setPreferredSize(new Dimension(320, 42));
+
+        String defaultTimeOption = "9:00 AM";
+        if (record.appointmentTime != null) {
+            String candidate = record.appointmentTime.format(APPOINTMENT_FORM_TIME_FORMAT);
+            for (int i = 0; i < timeSelector.getItemCount(); i++) {
+                if (candidate.equalsIgnoreCase(String.valueOf(timeSelector.getItemAt(i)))) {
+                    defaultTimeOption = String.valueOf(timeSelector.getItemAt(i));
+                    break;
+                }
+            }
+        }
+        timeSelector.setSelectedItem(defaultTimeOption);
+
+        JPanel form = landscapeFormPanel(
+            new String[]{"Reschedule Date", "Reschedule Time"},
+            new JComponent[]{datePicker, timeSelector},
+            2,
+            700
+        );
+
+        while (true) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                form,
+                "Reschedule Appointment",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+            );
+            if (result != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            resetFieldValidationState(datePicker, timeSelector);
+
+            java.util.Date selectedDateValue = datePicker.getDate();
+            if (selectedDateValue == null) {
+                highlightInvalidField(datePicker);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Please select a reschedule date.",
+                    "Invalid Date",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+            LocalDate selectedDate = new Date(selectedDateValue.getTime()).toLocalDate();
+            String selectedDateText = selectedDate.format(APPOINTMENT_FORM_DATE_FORMAT);
+            String dateValidationError = validateAppointmentDateInput(selectedDateText);
+            if (dateValidationError != null) {
+                highlightInvalidField(datePicker);
+                JOptionPane.showMessageDialog(this, dateValidationError, "Invalid Date", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String selectedTimeText = timeSelector.getSelectedItem() == null
+                ? ""
+                : String.valueOf(timeSelector.getSelectedItem()).trim();
+            String timeValidationError = validateAppointmentTimeInput(selectedTimeText);
+            if (timeValidationError != null) {
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(this, timeValidationError, "Invalid Time", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            LocalTime selectedTime;
+            try {
+                selectedTime = parseAppointmentFormTime(selectedTimeText);
+            } catch (Exception ex) {
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Invalid time format. Please select a valid time.",
+                    "Invalid Time",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            String overlapError = validateAppointmentSlotAvailability(selectedDate, selectedTime, null);
+            if (overlapError != null) {
+                highlightInvalidField(datePicker);
+                highlightInvalidField(timeSelector);
+                JOptionPane.showMessageDialog(this, overlapError, "Schedule Conflict", JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            if (!confirmRescheduleFromHistory(selectedDate, selectedTime)) {
+                continue;
+            }
+
+            RescheduleResult saveResult = rescheduleAppointmentFromHistory(record, selectedDate, selectedTime);
+            if (!saveResult.success) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    safeText(saveResult.message, "Could not reschedule this appointment. Please try again."),
+                    "Reschedule Failed",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            refreshAllViews();
+            JOptionPane.showMessageDialog(
+                this,
+                "Appointment rescheduled to "
+                    + saveResult.date.format(APPOINTMENT_FORM_DATE_FORMAT)
+                    + " at "
+                    + saveResult.time.format(APPOINTMENT_FORM_TIME_FORMAT)
+                    + ".",
+                "Rescheduled",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+    }
+
+    private boolean confirmRescheduleFromHistory(LocalDate date, LocalTime time) {
+        String dateText = date == null ? "-" : date.format(APPOINTMENT_FORM_DATE_FORMAT);
+        String timeText = time == null ? "-" : time.format(APPOINTMENT_FORM_TIME_FORMAT);
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            "Are you sure you want to reschedule this appointment to " + dateText + " at " + timeText + "?",
+            "Confirm Reschedule",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE
+        );
+        return result == JOptionPane.YES_OPTION;
+    }
+
+    private RescheduleResult rescheduleAppointmentFromHistory(CancellationHistoryRecord record, LocalDate selectedDate, LocalTime selectedTime) {
+        if (record == null) {
+            return RescheduleResult.failure("No record selected to reschedule.");
+        }
+        if (selectedDate == null || selectedTime == null) {
+            return RescheduleResult.failure("Please select both date and time for rescheduling.");
+        }
+
+        String dateValidationError = validateAppointmentDateInput(selectedDate.format(APPOINTMENT_FORM_DATE_FORMAT));
+        if (dateValidationError != null) {
+            return RescheduleResult.failure(dateValidationError);
+        }
+        String timeValidationError = validateAppointmentTimeInput(selectedTime.format(APPOINTMENT_FORM_TIME_FORMAT));
+        if (timeValidationError != null) {
+            return RescheduleResult.failure(timeValidationError);
+        }
+
+        String readHistorySql =
+            "SELECT appointment_id, patient_id, patient_name, appointment_date, appointment_time, " +
+            "COALESCE(NULLIF(TRIM(appointment_reason), ''), '-') AS appointment_reason, " +
+            "COALESCE(NULLIF(TRIM(allergies), ''), 'N/A') AS allergies, " +
+            "COALESCE(notes, '') AS notes " +
+            "FROM cancellation_history WHERE history_id=? LIMIT 1";
+        String insertAppointmentSql =
+            "INSERT INTO appointment (patient_id, dentist_id, appointment_date, appointment_time, cancel_reason, allergies, status, reason, notes) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String deleteHistorySql = "DELETE FROM cancellation_history WHERE history_id=?";
+
+        try (Connection con = DBConnection.getConnection()) {
+            if (con == null) {
+                return RescheduleResult.failure("Unable to connect to the database.");
+            }
+            ensureClinicTables(con);
+            boolean originalAutoCommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                Integer linkedPatientId = null;
+                String reason = "-";
+                String allergies = "N/A";
+                String notes = "";
+
+                try (PreparedStatement readPst = con.prepareStatement(readHistorySql)) {
+                    readPst.setInt(1, record.historyId);
+                    try (ResultSet rs = readPst.executeQuery()) {
+                        if (!rs.next()) {
+                            con.rollback();
+                            return RescheduleResult.failure("History record no longer exists.");
+                        }
+                        Object patientObj = rs.getObject("patient_id");
+                        if (patientObj != null) {
+                            int patientId = rs.getInt("patient_id");
+                            if (patientId > 0 && patientExistsById(con, patientId)) {
+                                linkedPatientId = patientId;
+                            }
+                        }
+                        reason = safeText(rs.getString("appointment_reason"), "-");
+                        allergies = safeText(rs.getString("allergies"), "N/A");
+                        notes = safeText(rs.getString("notes"), "");
+                    }
+                }
+
+                if (hasOverlappingAppointment(con, selectedDate, selectedTime, APPOINTMENT_DURATION_MINUTES, null)) {
+                    con.rollback();
+                    return RescheduleResult.failure(TIME_SLOT_BOOKED_MESSAGE);
+                }
+
+                try (PreparedStatement insertPst = con.prepareStatement(insertAppointmentSql)) {
+                    if (linkedPatientId == null || linkedPatientId <= 0) {
+                        insertPst.setNull(1, Types.INTEGER);
+                    } else {
+                        insertPst.setInt(1, linkedPatientId);
+                    }
+                    insertPst.setNull(2, Types.INTEGER);
+                    insertPst.setDate(3, Date.valueOf(selectedDate));
+                    insertPst.setTime(4, Time.valueOf(selectedTime.withSecond(0).withNano(0)));
+                    insertPst.setString(5, "-");
+                    insertPst.setString(6, allergies.isBlank() ? "N/A" : allergies);
+                    insertPst.setString(7, "pending");
+                    insertPst.setString(8, reason.isBlank() ? "-" : reason);
+                    insertPst.setString(9, notes);
+                    if (insertPst.executeUpdate() <= 0) {
+                        con.rollback();
+                        return RescheduleResult.failure("Could not create the rescheduled appointment.");
+                    }
+                }
+
+                try (PreparedStatement deletePst = con.prepareStatement(deleteHistorySql)) {
+                    deletePst.setInt(1, record.historyId);
+                    if (deletePst.executeUpdate() <= 0) {
+                        con.rollback();
+                        return RescheduleResult.failure("Could not update cancellation history after rescheduling.");
+                    }
+                }
+
+                con.commit();
+                return RescheduleResult.success(selectedDate, selectedTime);
+            } catch (SQLException e) {
+                try {
+                    con.rollback();
+                } catch (SQLException ignored) {
+                    // Keep original exception.
+                }
+                throw e;
+            } finally {
+                try {
+                    con.setAutoCommit(originalAutoCommit);
+                } catch (SQLException ignored) {
+                    // No-op.
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return RescheduleResult.failure("Could not reschedule this appointment due to a database error.");
+        }
+    }
+
+    private boolean patientExistsById(Connection con, int patientId) throws SQLException {
+        if (patientId <= 0) {
+            return false;
+        }
+        try (PreparedStatement pst = con.prepareStatement("SELECT 1 FROM patient WHERE patient_id=? LIMIT 1")) {
+            pst.setInt(1, patientId);
+            try (ResultSet rs = pst.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 
     private boolean insertPatientToDatabase(
@@ -3789,7 +4361,8 @@ public class AdminDashboardFrame extends JFrame {
         datePicker.setDate(Date.valueOf(allowedStartDate));
 
         JComboBox<String> timeSelector = new JComboBox<>(buildAppointmentTimeOptions());
-        JTextField reason = new JTextField();
+        JComboBox<String> reasonSelector = new JComboBox<>(APPOINTMENT_REASON_OPTIONS);
+        JTextField otherReason = new JTextField();
         JTextField allergies = new JTextField();
         JTextField notes = new JTextField();
 
@@ -3798,7 +4371,7 @@ public class AdminDashboardFrame extends JFrame {
         styleInputField(lastName);
         styleInputField(contact);
         styleInputField(emergencyContact);
-        styleInputField(reason);
+        styleInputField(otherReason);
         styleInputField(allergies);
         styleInputField(notes);
         applyLettersOnlyInputRestriction(firstName);
@@ -3806,22 +4379,51 @@ public class AdminDashboardFrame extends JFrame {
         applyLettersOnlyInputRestriction(lastName);
         applyDigitsOnlyInputRestriction(contact, 11);
         applyDigitsOnlyInputRestriction(emergencyContact, 11);
-        applyLettersAndSpacesInputRestriction(reason);
+        applyLettersAndSpacesInputRestriction(otherReason);
         applyLettersAndSpacesInputRestriction(allergies);
         styleDateChooserField(datePicker);
         applyDefaultFieldBorder(timeSelector);
+        applyDefaultFieldBorder(reasonSelector);
 
         timeSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
         timeSelector.setBackground(Color.WHITE);
         timeSelector.setPreferredSize(new Dimension(320, 42));
         timeSelector.setSelectedItem("9:00 AM");
 
+        reasonSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        reasonSelector.setBackground(Color.WHITE);
+        reasonSelector.setPreferredSize(new Dimension(210, 42));
+        reasonSelector.setMinimumSize(new Dimension(180, 42));
+
+        otherReason.setPreferredSize(new Dimension(120, 42));
+        otherReason.setMinimumSize(new Dimension(120, 42));
+        otherReason.setToolTipText("Optional custom reason when Others is selected");
+
+        JPanel reasonField = new JPanel(new BorderLayout(8, 0));
+        reasonField.setOpaque(false);
+        reasonField.setPreferredSize(new Dimension(320, 42));
+        reasonField.setMinimumSize(new Dimension(220, 42));
+        reasonField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+        reasonField.add(reasonSelector, BorderLayout.CENTER);
+        reasonField.add(otherReason, BorderLayout.EAST);
+
+        Runnable syncOtherReasonField = () -> {
+            boolean othersSelected = "Others".equalsIgnoreCase(String.valueOf(reasonSelector.getSelectedItem()));
+            otherReason.setEnabled(othersSelected);
+            otherReason.setEditable(othersSelected);
+            otherReason.setBackground(othersSelected ? Color.WHITE : new Color(245, 248, 255));
+            if (!othersSelected) {
+                otherReason.setText("");
+            }
+        };
+        reasonSelector.addActionListener(e -> syncOtherReasonField.run());
+        syncOtherReasonField.run();
+
         firstName.setPreferredSize(new Dimension(320, 42));
         middleName.setPreferredSize(new Dimension(320, 42));
         lastName.setPreferredSize(new Dimension(320, 42));
         contact.setPreferredSize(new Dimension(320, 42));
         emergencyContact.setPreferredSize(new Dimension(320, 42));
-        reason.setPreferredSize(new Dimension(320, 42));
         allergies.setPreferredSize(new Dimension(320, 42));
         notes.setPreferredSize(new Dimension(320, 42));
 
@@ -3832,7 +4434,7 @@ public class AdminDashboardFrame extends JFrame {
         formGrid.add(landscapeFieldBlock("Middle Name (optional)", middleName));
         formGrid.add(landscapeFieldBlock("Appointment Time", timeSelector));
         formGrid.add(landscapeFieldBlock("Last Name", lastName));
-        formGrid.add(landscapeFieldBlock("Reason", reason));
+        formGrid.add(landscapeFieldBlock("Reason", reasonField));
         formGrid.add(landscapeFieldBlock("Contact Number", contact));
         formGrid.add(landscapeFieldBlock("Allergies (optional)", allergies));
         formGrid.add(landscapeFieldBlock("Emergency Contact Number", emergencyContact));
@@ -3858,14 +4460,21 @@ public class AdminDashboardFrame extends JFrame {
                 return;
             }
 
-            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact, datePicker, timeSelector, reason, allergies, notes);
+            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact, datePicker, timeSelector, reasonSelector, otherReason, allergies, notes);
 
             String firstNameText = firstName.getText().trim();
             String middleNameText = middleName.getText().trim();
             String lastNameText = lastName.getText().trim();
             String contactText = contact.getText().trim();
             String emergencyContactText = emergencyContact.getText().trim();
-            String reasonText = reason.getText().trim();
+            String selectedReason = reasonSelector.getSelectedItem() == null
+                ? ""
+                : reasonSelector.getSelectedItem().toString().trim();
+            String otherReasonText = otherReason.getText().trim();
+            boolean othersSelected = "Others".equalsIgnoreCase(selectedReason);
+            String reasonText = othersSelected
+                ? (otherReasonText.isBlank() ? "Others" : otherReasonText)
+                : selectedReason;
             String allergiesText = allergies.getText().trim();
             String notesText = notes.getText().trim();
 
@@ -3984,9 +4593,38 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
+            if (selectedReason.isBlank()) {
+                highlightInvalidField(reasonSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Please select a reason for the appointment.",
+                    "Invalid Reason",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            if (othersSelected) {
+                String otherReasonError = validateLettersAndSpacesField("Custom Reason", otherReasonText, false);
+                if (otherReasonError != null) {
+                    highlightInvalidField(otherReason);
+                    JOptionPane.showMessageDialog(
+                        this,
+                        otherReasonError,
+                        "Invalid Custom Reason",
+                        JOptionPane.WARNING_MESSAGE
+                    );
+                    continue;
+                }
+            }
+
             String reasonError = validateLettersAndSpacesField("Reason", reasonText, true);
             if (reasonError != null) {
-                highlightInvalidField(reason);
+                if (othersSelected) {
+                    highlightInvalidField(otherReason);
+                } else {
+                    highlightInvalidField(reasonSelector);
+                }
                 JOptionPane.showMessageDialog(
                     this,
                     reasonError,
@@ -4252,7 +4890,8 @@ public class AdminDashboardFrame extends JFrame {
         datePicker.setDate(Date.valueOf(seedDate));
 
         JComboBox<String> timeSelector = new JComboBox<>(buildAppointmentTimeOptions());
-        JTextField reason = new JTextField(safeText(record.reason, ""));
+        JComboBox<String> reasonSelector = new JComboBox<>(APPOINTMENT_REASON_OPTIONS);
+        JTextField otherReason = new JTextField();
         String existingAllergies = safeText(record.allergies, "");
         if ("N/A".equalsIgnoreCase(existingAllergies.trim())) {
             existingAllergies = "";
@@ -4265,7 +4904,7 @@ public class AdminDashboardFrame extends JFrame {
         styleInputField(lastName);
         styleInputField(contact);
         styleInputField(emergencyContact);
-        styleInputField(reason);
+        styleInputField(otherReason);
         styleInputField(allergies);
         styleInputField(notes);
         applyLettersOnlyInputRestriction(firstName);
@@ -4273,14 +4912,61 @@ public class AdminDashboardFrame extends JFrame {
         applyLettersOnlyInputRestriction(lastName);
         applyDigitsOnlyInputRestriction(contact, 11);
         applyDigitsOnlyInputRestriction(emergencyContact, 11);
-        applyLettersAndSpacesInputRestriction(reason);
+        applyLettersAndSpacesInputRestriction(otherReason);
         applyLettersAndSpacesInputRestriction(allergies);
         styleDateChooserField(datePicker);
         applyDefaultFieldBorder(timeSelector);
+        applyDefaultFieldBorder(reasonSelector);
 
         timeSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
         timeSelector.setBackground(Color.WHITE);
         timeSelector.setPreferredSize(new Dimension(320, 42));
+        reasonSelector.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        reasonSelector.setBackground(Color.WHITE);
+        reasonSelector.setPreferredSize(new Dimension(210, 42));
+        reasonSelector.setMinimumSize(new Dimension(180, 42));
+
+        otherReason.setPreferredSize(new Dimension(120, 42));
+        otherReason.setMinimumSize(new Dimension(120, 42));
+        otherReason.setToolTipText("Optional custom reason when Others is selected");
+
+        JPanel reasonField = new JPanel(new BorderLayout(8, 0));
+        reasonField.setOpaque(false);
+        reasonField.setPreferredSize(new Dimension(320, 42));
+        reasonField.setMinimumSize(new Dimension(220, 42));
+        reasonField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+        reasonField.add(reasonSelector, BorderLayout.CENTER);
+        reasonField.add(otherReason, BorderLayout.EAST);
+
+        String existingReasonText = safeText(record.reason, "").trim();
+        boolean matchedReason = false;
+        for (String option : APPOINTMENT_REASON_OPTIONS) {
+            if (!"Others".equalsIgnoreCase(option) && option.equalsIgnoreCase(existingReasonText)) {
+                reasonSelector.setSelectedItem(option);
+                matchedReason = true;
+                break;
+            }
+        }
+        if (!matchedReason && !existingReasonText.isBlank()) {
+            reasonSelector.setSelectedItem("Others");
+            otherReason.setText(existingReasonText);
+        }
+
+        Runnable syncOtherReasonField = () -> {
+            boolean othersSelected = "Others".equalsIgnoreCase(String.valueOf(reasonSelector.getSelectedItem()));
+            otherReason.setEnabled(othersSelected);
+            otherReason.setEditable(othersSelected);
+            otherReason.setBackground(othersSelected ? Color.WHITE : new Color(245, 248, 255));
+            if (!othersSelected) {
+                otherReason.setText("");
+            }
+        };
+        reasonSelector.addActionListener(e -> syncOtherReasonField.run());
+        syncOtherReasonField.run();
+        if ("Others".equalsIgnoreCase(String.valueOf(reasonSelector.getSelectedItem()))) {
+            otherReason.setText(existingReasonText);
+        }
+
         String selectedTime = "9:00 AM";
         if (record.appointmentTime != null) {
             selectedTime = record.appointmentTime.withSecond(0).withNano(0).format(APPOINTMENT_FORM_TIME_FORMAT);
@@ -4298,7 +4984,6 @@ public class AdminDashboardFrame extends JFrame {
         lastName.setPreferredSize(new Dimension(320, 42));
         contact.setPreferredSize(new Dimension(320, 42));
         emergencyContact.setPreferredSize(new Dimension(320, 42));
-        reason.setPreferredSize(new Dimension(320, 42));
         allergies.setPreferredSize(new Dimension(320, 42));
         notes.setPreferredSize(new Dimension(320, 42));
 
@@ -4309,7 +4994,7 @@ public class AdminDashboardFrame extends JFrame {
         formGrid.add(landscapeFieldBlock("Middle Name (optional)", middleName));
         formGrid.add(landscapeFieldBlock("Appointment Time", timeSelector));
         formGrid.add(landscapeFieldBlock("Last Name", lastName));
-        formGrid.add(landscapeFieldBlock("Reason", reason));
+        formGrid.add(landscapeFieldBlock("Reason", reasonField));
         formGrid.add(landscapeFieldBlock("Contact Number", contact));
         formGrid.add(landscapeFieldBlock("Allergies (optional)", allergies));
         formGrid.add(landscapeFieldBlock("Emergency Contact Number", emergencyContact));
@@ -4335,14 +5020,21 @@ public class AdminDashboardFrame extends JFrame {
                 return;
             }
 
-            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact, datePicker, timeSelector, reason, allergies, notes);
+            resetFieldValidationState(firstName, middleName, lastName, contact, emergencyContact, datePicker, timeSelector, reasonSelector, otherReason, allergies, notes);
 
             String firstNameText = firstName.getText().trim();
             String middleNameText = middleName.getText().trim();
             String lastNameText = lastName.getText().trim();
             String contactText = contact.getText().trim();
             String emergencyContactText = emergencyContact.getText().trim();
-            String reasonText = reason.getText().trim();
+            String selectedReason = reasonSelector.getSelectedItem() == null
+                ? ""
+                : reasonSelector.getSelectedItem().toString().trim();
+            String otherReasonText = otherReason.getText().trim();
+            boolean othersSelected = "Others".equalsIgnoreCase(selectedReason);
+            String reasonText = othersSelected
+                ? (otherReasonText.isBlank() ? "Others" : otherReasonText)
+                : selectedReason;
             String allergiesText = allergies.getText().trim();
             String notesText = notes.getText().trim();
 
@@ -4448,9 +5140,33 @@ public class AdminDashboardFrame extends JFrame {
                 continue;
             }
 
+            if (selectedReason.isBlank()) {
+                highlightInvalidField(reasonSelector);
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Please select a reason for the appointment.",
+                    "Invalid Reason",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                continue;
+            }
+
+            if (othersSelected) {
+                String otherReasonError = validateLettersAndSpacesField("Custom Reason", otherReasonText, false);
+                if (otherReasonError != null) {
+                    highlightInvalidField(otherReason);
+                    JOptionPane.showMessageDialog(this, otherReasonError, "Invalid Custom Reason", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+            }
+
             String reasonError = validateLettersAndSpacesField("Reason", reasonText, true);
             if (reasonError != null) {
-                highlightInvalidField(reason);
+                if (othersSelected) {
+                    highlightInvalidField(otherReason);
+                } else {
+                    highlightInvalidField(reasonSelector);
+                }
                 JOptionPane.showMessageDialog(this, reasonError, "Invalid Reason", JOptionPane.WARNING_MESSAGE);
                 continue;
             }
@@ -4862,7 +5578,7 @@ public class AdminDashboardFrame extends JFrame {
         row.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
-                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -4873,16 +5589,16 @@ public class AdminDashboardFrame extends JFrame {
             ? safeText(record.dateText, "-")
             : record.appointmentDate.format(APPOINTMENT_TABLE_DATE_FORMAT);
         JLabel dateCell = rowLabelLimited(formattedDate, 12);
-        dateCell.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        dateCell.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         addAppointmentTableGridCell(row, dateCell, 0, GridBagConstraints.NORTHWEST);
 
         JLabel timeCell = rowLabel(safeText(record.timeText, "--:--"));
-        timeCell.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        timeCell.setFont(new Font("Segoe UI", Font.BOLD, 15));
         timeCell.setForeground(new Color(63, 101, 228));
         addAppointmentTableGridCell(row, timeCell, 1, GridBagConstraints.NORTHWEST);
 
         JLabel patientCell = rowLabelLimited(safeText(record.patientName, "(No patient)"), 26);
-        patientCell.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        patientCell.setFont(new Font("Segoe UI", Font.BOLD, 14));
         addAppointmentTableGridCell(row, patientCell, 2, GridBagConstraints.NORTHWEST);
 
         JPanel reasonCell = appointmentWrappedTextCell(safeText(record.reason, "-"), appointmentColumnWidth(3) - 10);
@@ -4902,15 +5618,15 @@ public class AdminDashboardFrame extends JFrame {
         actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
         JButton editButton = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
-        editButton.setPreferredSize(new Dimension(96, 30));
-        editButton.setMinimumSize(new Dimension(96, 30));
-        editButton.setMaximumSize(new Dimension(96, 30));
+        editButton.setPreferredSize(new Dimension(96, 28));
+        editButton.setMinimumSize(new Dimension(96, 28));
+        editButton.setMaximumSize(new Dimension(96, 28));
         editButton.addActionListener(e -> openEditAppointmentDialog(record));
 
         JButton confirmButton = softActionButton("Confirm", new Color(231, 246, 236), new Color(46, 174, 102));
-        confirmButton.setPreferredSize(new Dimension(96, 30));
-        confirmButton.setMinimumSize(new Dimension(96, 30));
-        confirmButton.setMaximumSize(new Dimension(96, 30));
+        confirmButton.setPreferredSize(new Dimension(96, 28));
+        confirmButton.setMinimumSize(new Dimension(96, 28));
+        confirmButton.setMaximumSize(new Dimension(96, 28));
         confirmButton.addActionListener(e -> {
             if (!confirmAppointmentStatusUpdate()) {
                 return;
@@ -4928,26 +5644,22 @@ public class AdminDashboardFrame extends JFrame {
         });
 
         JButton cancelButton = softActionButton("Cancel", new Color(252, 236, 236), new Color(224, 93, 93));
-        cancelButton.setPreferredSize(new Dimension(96, 30));
-        cancelButton.setMinimumSize(new Dimension(96, 30));
-        cancelButton.setMaximumSize(new Dimension(96, 30));
+        cancelButton.setPreferredSize(new Dimension(96, 28));
+        cancelButton.setMinimumSize(new Dimension(96, 28));
+        cancelButton.setMaximumSize(new Dimension(96, 28));
         cancelButton.addActionListener(e -> {
-            if (!confirmAppointmentStatusUpdate()) {
+            if (!confirmAppointmentDelete()) {
                 return;
             }
-            String reason = JOptionPane.showInputDialog(this, "Cancel reason (optional):", "Cancelled by admin");
+            String reason = JOptionPane.showInputDialog(this, "Cancellation reason (optional):", "Cancelled by user");
             if (reason == null) {
                 return;
             }
-            if (!updateAppointmentStatusInDatabase(
-                record.id,
-                "cancelled",
-                reason.isBlank() ? "Cancelled by admin" : reason.trim()
-            )) {
+            if (!archiveAndDeleteAppointment(record.id, reason.isBlank() ? "Cancelled by user" : reason.trim())) {
                 JOptionPane.showMessageDialog(
                     this,
-                    "Could not mark this appointment as Cancelled. Please try again.",
-                    "Update Failed",
+                    "Could not cancel this appointment. Please try again.",
+                    "Cancel Failed",
                     JOptionPane.ERROR_MESSAGE
                 );
                 return;
@@ -4955,12 +5667,12 @@ public class AdminDashboardFrame extends JFrame {
             refreshAllViews();
         });
 
-        actions.setPreferredSize(new Dimension(100, 112));
-        actions.setMinimumSize(new Dimension(100, 112));
+        actions.setPreferredSize(new Dimension(100, 96));
+        actions.setMinimumSize(new Dimension(100, 96));
         actions.add(editButton);
-        actions.add(Box.createVerticalStrut(8));
+        actions.add(Box.createVerticalStrut(6));
         actions.add(confirmButton);
-        actions.add(Box.createVerticalStrut(8));
+        actions.add(Box.createVerticalStrut(6));
         actions.add(cancelButton);
         addAppointmentTableGridCell(row, actions, 7, GridBagConstraints.NORTHEAST);
 
@@ -4968,7 +5680,7 @@ public class AdminDashboardFrame extends JFrame {
         wrappedHeight = Math.max(wrappedHeight, notesCell.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
-        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 22);
         row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
@@ -5049,22 +5761,21 @@ public class AdminDashboardFrame extends JFrame {
 
         JButton cancelled = actionButton("✕", new Color(231, 86, 86));
         cancelled.addActionListener(e -> {
-            if (!confirmAppointmentStatusUpdate()) {
+            if (!confirmAppointmentDelete()) {
                 return;
             }
-            String reasonText = JOptionPane.showInputDialog(this, "Cancel reason (optional):", "Cancelled by admin");
+            String reasonText = JOptionPane.showInputDialog(this, "Cancellation reason (optional):", "Cancelled by user");
             if (reasonText == null) {
                 return;
             }
-            if (!updateAppointmentStatusInDatabase(
+            if (!archiveAndDeleteAppointment(
                 record.id,
-                "cancelled",
-                reasonText.isBlank() ? "Cancelled by admin" : reasonText.trim()
+                reasonText.isBlank() ? "Cancelled by user" : reasonText.trim()
             )) {
                 JOptionPane.showMessageDialog(
                     this,
-                    "Could not mark this appointment as Cancelled. Please try again.",
-                    "Update Failed",
+                    "Could not cancel this appointment. Please try again.",
+                    "Cancel Failed",
                     JOptionPane.ERROR_MESSAGE
                 );
                 return;
@@ -5089,7 +5800,7 @@ public class AdminDashboardFrame extends JFrame {
         row.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
-                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -5122,9 +5833,9 @@ public class AdminDashboardFrame extends JFrame {
         actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
         JButton edit = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
-        edit.setPreferredSize(new Dimension(88, 32));
-        edit.setMinimumSize(new Dimension(88, 32));
-        edit.setMaximumSize(new Dimension(88, 32));
+        edit.setPreferredSize(new Dimension(88, 28));
+        edit.setMinimumSize(new Dimension(88, 28));
+        edit.setMaximumSize(new Dimension(88, 28));
         edit.setAlignmentX(Component.CENTER_ALIGNMENT);
         edit.addActionListener(e -> {
             PatientRecord latestRecord = fetchPatientRecordById(record.id);
@@ -5286,9 +5997,9 @@ public class AdminDashboardFrame extends JFrame {
             }
         });
 
-        actions.setPreferredSize(new Dimension(96, 36));
-        actions.setMinimumSize(new Dimension(96, 36));
-        actions.setMaximumSize(new Dimension(96, 36));
+        actions.setPreferredSize(new Dimension(96, 32));
+        actions.setMinimumSize(new Dimension(96, 32));
+        actions.setMaximumSize(new Dimension(96, 32));
         actions.add(edit);
         addPatientTableGridCell(row, actions, 6, GridBagConstraints.CENTER);
 
@@ -5297,7 +6008,7 @@ public class AdminDashboardFrame extends JFrame {
         wrappedHeight = Math.max(wrappedHeight, contactCell.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, emergencyContactCell.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
-        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 22);
         row.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setPreferredSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setMaximumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, dynamicHeight));
@@ -5305,18 +6016,32 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void refreshLogSummary() {
-        int completed = countByStatus("completed");
-        int cancelled = countByStatus("cancelled");
-        int totalLogged = completed + cancelled;
+        int totalDeleted = cancellationHistoryRecords.size();
+        int deletedToday = 0;
+        int deletedThisMonth = 0;
+        LocalDate today = LocalDate.now();
+
+        for (CancellationHistoryRecord record : cancellationHistoryRecords) {
+            if (record == null || record.deletedAt == null) {
+                continue;
+            }
+            LocalDate deletedDate = record.deletedAt.toLocalDate();
+            if (today.equals(deletedDate)) {
+                deletedToday++;
+            }
+            if (today.getYear() == deletedDate.getYear() && today.getMonth() == deletedDate.getMonth()) {
+                deletedThisMonth++;
+            }
+        }
 
         if (logTotalValue != null) {
-            logTotalValue.setText(String.valueOf(totalLogged));
+            logTotalValue.setText(String.valueOf(totalDeleted));
         }
         if (logCompletedValue != null) {
-            logCompletedValue.setText(String.valueOf(completed));
+            logCompletedValue.setText(String.valueOf(deletedToday));
         }
         if (logCancelledValue != null) {
-            logCancelledValue.setText(String.valueOf(cancelled));
+            logCancelledValue.setText(String.valueOf(deletedThisMonth));
         }
     }
 
@@ -5327,26 +6052,23 @@ public class AdminDashboardFrame extends JFrame {
 
         logRows.removeAll();
 
-        List<AppointmentRecord> logged = new ArrayList<>();
-        for (AppointmentRecord record : appointmentRecords) {
-            boolean inLog = "completed".equals(record.status) || "cancelled".equals(record.status);
-            boolean matchesFilter = "all".equals(logFilter) || logFilter.equals(record.status);
-            boolean matchesSearch = matchesLogSearch(record);
-            if (inLog && matchesFilter && matchesSearch) {
-                logged.add(record);
+        List<CancellationHistoryRecord> filtered = new ArrayList<>();
+        for (CancellationHistoryRecord record : cancellationHistoryRecords) {
+            if (matchesCancellationHistorySearch(record)) {
+                filtered.add(record);
             }
         }
 
-        if (logged.isEmpty()) {
+        if (filtered.isEmpty()) {
             logRows.add(logEmptyStatePanel());
             updateRowsPanelHeightFromChildren(logRows);
         } else {
             int i = 0;
-            for (AppointmentRecord record : logged) {
+            for (CancellationHistoryRecord record : filtered) {
                 if (i > 0) {
                     logRows.add(Box.createVerticalStrut(TABLE_ROW_GAP));
                 }
-                logRows.add(logRow(record));
+                logRows.add(cancellationHistoryRow(record));
                 i++;
             }
             updateRowsPanelHeightFromChildren(logRows);
@@ -5356,122 +6078,73 @@ public class AdminDashboardFrame extends JFrame {
         logRows.repaint();
     }
 
-    private JPanel logRow(AppointmentRecord record) {
+    private JPanel cancellationHistoryRow(CancellationHistoryRecord record) {
         RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
         row.setLayout(new GridBagLayout());
         row.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
-                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
-        row.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, Integer.MAX_VALUE));
+        row.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, TABLE_ROW_HEIGHT));
+        row.setMaximumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, Integer.MAX_VALUE));
 
-        String formattedDate = record.appointmentDate == null
-            ? safeText(record.dateText, "-")
-            : record.appointmentDate.format(APPOINTMENT_TABLE_DATE_FORMAT);
-        JLabel dateCell = rowLabelLimited(formattedDate, 12);
-        dateCell.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        addAppointmentTableGridCell(row, dateCell, 0, GridBagConstraints.NORTHWEST);
+        String deletedAtText = record.deletedAt == null
+            ? "-"
+            : record.deletedAt.format(CANCELLATION_DELETED_AT_FORMAT);
+        JLabel deletedAtCell = rowLabelLimited(deletedAtText, 18);
+        deletedAtCell.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        addCancellationHistoryTableGridCell(row, deletedAtCell, 0, GridBagConstraints.NORTHWEST);
 
-        JLabel timeCell = rowLabel(safeText(record.timeText, "--:--"));
-        timeCell.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        String dateText = record.appointmentDate == null ? "-" : record.appointmentDate.format(APPOINTMENT_TABLE_DATE_FORMAT);
+        JLabel dateCell = rowLabelLimited(dateText, 12);
+        dateCell.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        addCancellationHistoryTableGridCell(row, dateCell, 1, GridBagConstraints.NORTHWEST);
+
+        String timeText = record.appointmentTime == null ? "--:--" : record.appointmentTime.format(APPOINTMENT_FORM_TIME_FORMAT);
+        JLabel timeCell = rowLabel(timeText);
+        timeCell.setFont(new Font("Segoe UI", Font.BOLD, 14));
         timeCell.setForeground(new Color(63, 101, 228));
-        addAppointmentTableGridCell(row, timeCell, 1, GridBagConstraints.NORTHWEST);
+        addCancellationHistoryTableGridCell(row, timeCell, 2, GridBagConstraints.NORTHWEST);
 
         JLabel patientCell = rowLabelLimited(safeText(record.patientName, "(No patient)"), 26);
-        patientCell.setFont(new Font("Segoe UI", Font.BOLD, 15));
-        addAppointmentTableGridCell(row, patientCell, 2, GridBagConstraints.NORTHWEST);
+        patientCell.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        addCancellationHistoryTableGridCell(row, patientCell, 3, GridBagConstraints.NORTHWEST);
 
-        String reasonText = safeText(record.reason, "-");
-        if ("cancelled".equals(record.status)) {
-            String cancel = safeText(record.cancelReason, "");
-            if (!cancel.isBlank() && !"-".equals(cancel)) {
-                reasonText = reasonText + "  |  Cancel: " + cancel;
-            }
-        }
-        JPanel reasonCell = appointmentWrappedTextCell(reasonText, appointmentColumnWidth(3) - 10);
-        addAppointmentTableGridCell(row, reasonCell, 3, GridBagConstraints.NORTHWEST);
+        String detailsText = "Reason: " + safeText(record.appointmentReason, "-") +
+            "\nAllergies: " + safeText(record.allergies, "N/A") +
+            "\nNotes: " + safeText(record.notes, "N/A");
+        JPanel detailsCell = appointmentWrappedTextCell(detailsText, cancellationHistoryColumnWidth(4) - 10);
+        addCancellationHistoryTableGridCell(row, detailsCell, 4, GridBagConstraints.NORTHWEST);
 
-        JPanel allergiesCell = appointmentWrappedTextCell(safeText(record.allergies, "N/A"), appointmentColumnWidth(4) - 10);
-        addAppointmentTableGridCell(row, allergiesCell, 4, GridBagConstraints.NORTHWEST);
+        JPanel deletionReasonCell = appointmentWrappedTextCell(
+            safeText(record.deletionReason, "Deleted by user"),
+            cancellationHistoryColumnWidth(5) - 10
+        );
+        addCancellationHistoryTableGridCell(row, deletionReasonCell, 5, GridBagConstraints.NORTHWEST);
 
-        JPanel notesCell = appointmentWrappedTextCell(safeText(record.notes, "N/A"), appointmentColumnWidth(5) - 10);
-        addAppointmentTableGridCell(row, notesCell, 5, GridBagConstraints.NORTHWEST);
+        JButton rescheduleButton = softActionButton("Reschedule", new Color(231, 246, 236), new Color(46, 174, 102));
+        rescheduleButton.setPreferredSize(new Dimension(140, 32));
+        rescheduleButton.setMinimumSize(new Dimension(140, 32));
+        rescheduleButton.setMaximumSize(new Dimension(140, 32));
+        rescheduleButton.setMargin(new Insets(0, 12, 0, 12));
+        rescheduleButton.addActionListener(e -> openRescheduleFromHistoryDialog(record));
+        addCancellationHistoryTableGridCell(row, rescheduleButton, 6, GridBagConstraints.CENTER);
 
-        JPanel statusCell = statusBadge(record.status);
-        addAppointmentTableGridCell(row, statusCell, 6, GridBagConstraints.CENTER);
-
-        JPanel actions = new JPanel();
-        actions.setOpaque(false);
-        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
-
-        if ("cancelled".equals(record.status)) {
-            JButton restore = softActionButton("Restore", new Color(234, 240, 252), new Color(44, 58, 86));
-            restore.setPreferredSize(new Dimension(96, 32));
-            restore.setMinimumSize(new Dimension(96, 32));
-            restore.setMaximumSize(new Dimension(96, 32));
-            restore.setAlignmentX(Component.CENTER_ALIGNMENT);
-            restore.addActionListener(e -> {
-                int confirm = JOptionPane.showConfirmDialog(
-                    this,
-                    "Are you sure you want to restore this appointment?",
-                    "Confirm Restore",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.QUESTION_MESSAGE
-                );
-                if (confirm != JOptionPane.YES_OPTION) {
-                    return;
-                }
-                if (!updateAppointmentStatusInDatabase(record.id, "pending", "-")) {
-                    JOptionPane.showMessageDialog(
-                        this,
-                        "Could not restore this cancelled appointment right now. Please try again.",
-                        "Restore Failed",
-                        JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-                refreshAllViews();
-            });
-            actions.add(restore);
-        } else {
-            JLabel noAction = new JLabel("-");
-            noAction.setFont(new Font("Segoe UI", Font.BOLD, 16));
-            noAction.setForeground(new Color(132, 145, 171));
-            noAction.setAlignmentX(Component.CENTER_ALIGNMENT);
-            actions.add(noAction);
-        }
-
-        actions.setPreferredSize(new Dimension(100, 36));
-        actions.setMinimumSize(new Dimension(100, 36));
-        actions.setMaximumSize(new Dimension(100, 36));
-        addAppointmentTableGridCell(row, actions, 7, GridBagConstraints.CENTER);
-
-        int wrappedHeight = Math.max(reasonCell.getPreferredSize().height, allergiesCell.getPreferredSize().height);
-        wrappedHeight = Math.max(wrappedHeight, notesCell.getPreferredSize().height);
-        wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
-        wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
-        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
-        row.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
-        row.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
-        row.setMaximumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, dynamicHeight));
+        int wrappedHeight = Math.max(detailsCell.getPreferredSize().height, deletionReasonCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, patientCell.getPreferredSize().height);
+        wrappedHeight = Math.max(wrappedHeight, rescheduleButton.getPreferredSize().height);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 22);
+        row.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, dynamicHeight));
+        row.setMaximumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, dynamicHeight));
         return row;
     }
 
     private void setLogFilter(String filter) {
         logFilter = filter;
-        if (logAllToggle != null) {
-            logAllToggle.setActive("all".equals(filter));
-        }
-        if (logCompletedToggle != null) {
-            logCompletedToggle.setActive("completed".equals(filter));
-        }
-        if (logCancelledToggle != null) {
-            logCancelledToggle.setActive("cancelled".equals(filter));
-        }
         refreshLogRows();
     }
 
@@ -5543,7 +6216,7 @@ public class AdminDashboardFrame extends JFrame {
         row.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(221, 229, 242), 1),
-                BorderFactory.createEmptyBorder(12, 14, 12, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -5579,9 +6252,9 @@ public class AdminDashboardFrame extends JFrame {
         actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
 
         JButton edit = softActionButton("Edit", new Color(236, 241, 251), new Color(40, 53, 79));
-        edit.setPreferredSize(new Dimension(108, 32));
-        edit.setMinimumSize(new Dimension(108, 32));
-        edit.setMaximumSize(new Dimension(108, 32));
+        edit.setPreferredSize(new Dimension(108, 28));
+        edit.setMinimumSize(new Dimension(108, 28));
+        edit.setMaximumSize(new Dimension(108, 28));
         edit.setAlignmentX(Component.CENTER_ALIGNMENT);
         edit.addActionListener(e -> {
             if (!confirmAdminPasswordForReceptionistEdit()) {
@@ -5725,9 +6398,9 @@ public class AdminDashboardFrame extends JFrame {
         JButton statusAction;
         if (activeReceptionist) {
             statusAction = softActionButton("Deactivate", new Color(252, 236, 236), new Color(224, 93, 93));
-            statusAction.setPreferredSize(new Dimension(108, 32));
-            statusAction.setMinimumSize(new Dimension(108, 32));
-            statusAction.setMaximumSize(new Dimension(108, 32));
+            statusAction.setPreferredSize(new Dimension(108, 28));
+            statusAction.setMinimumSize(new Dimension(108, 28));
+            statusAction.setMaximumSize(new Dimension(108, 28));
             statusAction.setAlignmentX(Component.CENTER_ALIGNMENT);
             statusAction.addActionListener(e -> {
                 if (!confirmAdminPasswordForReceptionistEdit()) {
@@ -5746,9 +6419,9 @@ public class AdminDashboardFrame extends JFrame {
             });
         } else {
             statusAction = softActionButton("Activate", new Color(231, 246, 236), new Color(73, 190, 107));
-            statusAction.setPreferredSize(new Dimension(108, 32));
-            statusAction.setMinimumSize(new Dimension(108, 32));
-            statusAction.setMaximumSize(new Dimension(108, 32));
+            statusAction.setPreferredSize(new Dimension(108, 28));
+            statusAction.setMinimumSize(new Dimension(108, 28));
+            statusAction.setMaximumSize(new Dimension(108, 28));
             statusAction.setAlignmentX(Component.CENTER_ALIGNMENT);
             statusAction.addActionListener(e -> {
                 if (!confirmAdminPasswordForReceptionistEdit()) {
@@ -5767,12 +6440,12 @@ public class AdminDashboardFrame extends JFrame {
             });
         }
 
-        actions.setPreferredSize(new Dimension(112, 72));
-        actions.setMinimumSize(new Dimension(112, 72));
-        actions.setMaximumSize(new Dimension(112, 72));
+        actions.setPreferredSize(new Dimension(112, 62));
+        actions.setMinimumSize(new Dimension(112, 62));
+        actions.setMaximumSize(new Dimension(112, 62));
         if (activeReceptionist) {
             actions.add(edit);
-            actions.add(Box.createVerticalStrut(8));
+            actions.add(Box.createVerticalStrut(6));
         }
         actions.add(statusAction);
         addReceptionistTableGridCell(row, actions, 5, GridBagConstraints.CENTER);
@@ -5781,7 +6454,7 @@ public class AdminDashboardFrame extends JFrame {
         wrappedHeight = Math.max(wrappedHeight, createdCell.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, statusCell.getPreferredSize().height);
         wrappedHeight = Math.max(wrappedHeight, actions.getPreferredSize().height);
-        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 28);
+        int dynamicHeight = Math.max(TABLE_ROW_HEIGHT, wrappedHeight + 22);
         row.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setPreferredSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, dynamicHeight));
         row.setMaximumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, dynamicHeight));
@@ -6321,6 +6994,32 @@ public class AdminDashboardFrame extends JFrame {
         return haystack.contains(logSearchQuery);
     }
 
+    private boolean matchesCancellationHistorySearch(CancellationHistoryRecord record) {
+        if (logSearchQuery.isBlank()) {
+            return true;
+        }
+        String deletedAtText = record.deletedAt == null
+            ? ""
+            : record.deletedAt.format(CANCELLATION_DELETED_AT_FORMAT);
+        String appointmentDateText = record.appointmentDate == null
+            ? ""
+            : record.appointmentDate.format(APPOINTMENT_TABLE_DATE_FORMAT);
+        String appointmentTimeText = record.appointmentTime == null
+            ? ""
+            : record.appointmentTime.format(APPOINTMENT_FORM_TIME_FORMAT);
+        String haystack = (
+            safeText(record.patientName, "") + " " +
+            safeText(record.appointmentReason, "") + " " +
+            safeText(record.allergies, "") + " " +
+            safeText(record.notes, "") + " " +
+            safeText(record.deletionReason, "") + " " +
+            deletedAtText + " " +
+            appointmentDateText + " " +
+            appointmentTimeText
+        ).toLowerCase(Locale.ENGLISH);
+        return haystack.contains(logSearchQuery);
+    }
+
     private boolean matchesReceptionistSearch(ReceptionistRecord record) {
         if (receptionistSearchQuery.isBlank()) {
             return true;
@@ -6380,12 +7079,12 @@ public class AdminDashboardFrame extends JFrame {
         header.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
-                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
-        header.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 52));
-        header.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 52));
-        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        header.setMinimumSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 46));
+        header.setPreferredSize(new Dimension(APPOINTMENT_TABLE_TOTAL_WIDTH, 46));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
 
         addAppointmentTableGridCell(header, appointmentHeaderLabel("Date"), 0, GridBagConstraints.WEST);
         addAppointmentTableGridCell(header, appointmentHeaderLabel("Time"), 1, GridBagConstraints.WEST);
@@ -6404,7 +7103,7 @@ public class AdminDashboardFrame extends JFrame {
 
     private JLabel appointmentHeaderLabel(String text) {
         JLabel label = new JLabel(text);
-        label.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        label.setFont(new Font("Segoe UI", Font.BOLD, 14));
         label.setForeground(new Color(73, 87, 112));
         return label;
     }
@@ -6432,7 +7131,7 @@ public class AdminDashboardFrame extends JFrame {
         gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = anchor;
-        gbc.insets = new java.awt.Insets(0, 8, 0, 8);
+        gbc.insets = new java.awt.Insets(0, 6, 0, 6);
         row.add(wrapper, gbc);
     }
 
@@ -6449,12 +7148,12 @@ public class AdminDashboardFrame extends JFrame {
         header.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
-                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
-        header.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 52));
-        header.setPreferredSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 52));
-        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        header.setMinimumSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 46));
+        header.setPreferredSize(new Dimension(PATIENT_TABLE_TOTAL_WIDTH, 46));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
 
         addPatientTableGridCell(header, appointmentHeaderLabel("Patient ID"), 0, GridBagConstraints.WEST);
         addPatientTableGridCell(header, appointmentHeaderLabel("First Name"), 1, GridBagConstraints.WEST);
@@ -6498,7 +7197,7 @@ public class AdminDashboardFrame extends JFrame {
         gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = anchor;
-        gbc.insets = new java.awt.Insets(0, 8, 0, 8);
+        gbc.insets = new java.awt.Insets(0, 6, 0, 6);
         row.add(wrapper, gbc);
     }
 
@@ -6508,12 +7207,12 @@ public class AdminDashboardFrame extends JFrame {
         header.setBorder(
             BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
-                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
             )
         );
-        header.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 52));
-        header.setPreferredSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 52));
-        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        header.setMinimumSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 46));
+        header.setPreferredSize(new Dimension(RECEPTIONIST_TABLE_TOTAL_WIDTH, 46));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
 
         addReceptionistTableGridCell(header, appointmentHeaderLabel("Account ID"), 0, GridBagConstraints.WEST);
         addReceptionistTableGridCell(header, appointmentHeaderLabel("Name"), 1, GridBagConstraints.WEST);
@@ -6558,7 +7257,66 @@ public class AdminDashboardFrame extends JFrame {
         gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = anchor;
-        gbc.insets = new java.awt.Insets(0, 8, 0, 8);
+        gbc.insets = new java.awt.Insets(0, 6, 0, 6);
+        row.add(wrapper, gbc);
+    }
+
+    private JPanel cancellationHistoryHeaderRow() {
+        RoundedPanel header = new RoundedPanel(12, new Color(243, 247, 255));
+        header.setLayout(new GridBagLayout());
+        header.setBorder(
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(223, 231, 244), 1),
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
+            )
+        );
+        header.setMinimumSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 46));
+        header.setPreferredSize(new Dimension(CANCELLATION_HISTORY_TABLE_TOTAL_WIDTH, 46));
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
+
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Deleted At"), 0, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Date"), 1, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Time"), 2, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Patient Name"), 3, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Appointment Details"), 4, GridBagConstraints.WEST);
+        addCancellationHistoryTableGridCell(header, appointmentHeaderLabel("Reason For Deletion"), 5, GridBagConstraints.WEST);
+        JLabel actionsHeader = appointmentHeaderLabel("Actions");
+        actionsHeader.setHorizontalAlignment(SwingConstants.CENTER);
+        addCancellationHistoryTableGridCell(header, actionsHeader, 6, GridBagConstraints.CENTER);
+        return header;
+    }
+
+    private int cancellationHistoryColumnWidth(int columnIndex) {
+        if (columnIndex < 0 || columnIndex >= CANCELLATION_HISTORY_COLUMN_WIDTHS.length) {
+            return 120;
+        }
+        return CANCELLATION_HISTORY_COLUMN_WIDTHS[columnIndex];
+    }
+
+    private void addCancellationHistoryTableGridCell(JPanel row, Component content, int columnIndex, int anchor) {
+        int colWidth = cancellationHistoryColumnWidth(columnIndex);
+        Dimension contentPref = content.getPreferredSize();
+        int prefHeight = Math.max(24, contentPref == null ? 24 : contentPref.height);
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setOpaque(false);
+        wrapper.setMinimumSize(new Dimension(colWidth, prefHeight));
+        wrapper.setPreferredSize(new Dimension(colWidth, prefHeight));
+        wrapper.setMaximumSize(new Dimension(colWidth, Integer.MAX_VALUE));
+        if (anchor == GridBagConstraints.CENTER) {
+            wrapper.add(content, BorderLayout.CENTER);
+        } else if (anchor == GridBagConstraints.EAST || anchor == GridBagConstraints.NORTHEAST || anchor == GridBagConstraints.SOUTHEAST) {
+            wrapper.add(content, BorderLayout.EAST);
+        } else {
+            wrapper.add(content, BorderLayout.WEST);
+        }
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = columnIndex;
+        gbc.gridy = 0;
+        gbc.weightx = 0.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = anchor;
+        gbc.insets = new java.awt.Insets(0, 6, 0, 6);
         row.add(wrapper, gbc);
     }
 
@@ -6571,7 +7329,7 @@ public class AdminDashboardFrame extends JFrame {
         textArea.setOpaque(false);
         textArea.setLineWrap(true);
         textArea.setWrapStyleWord(true);
-        textArea.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        textArea.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         textArea.setForeground(new Color(64, 78, 104));
         textArea.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         textArea.setRows(1);
@@ -6579,7 +7337,7 @@ public class AdminDashboardFrame extends JFrame {
         textArea.setSize(new Dimension(safeWidth, Integer.MAX_VALUE));
 
         Dimension textPreferred = textArea.getPreferredSize();
-        int finalHeight = Math.max(22, textPreferred.height);
+        int finalHeight = Math.max(20, textPreferred.height);
 
         JPanel wrap = new JPanel(new BorderLayout());
         wrap.setOpaque(false);
@@ -6592,7 +7350,7 @@ public class AdminDashboardFrame extends JFrame {
 
     private JLabel rowLabel(String text) {
         JLabel label = new JLabel(text);
-        label.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        label.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         label.setForeground(new Color(40, 53, 79));
         return label;
     }
@@ -6621,9 +7379,9 @@ public class AdminDashboardFrame extends JFrame {
     private JPanel chipLabel(String text) {
         RoundedPanel chip = new RoundedPanel(8, new Color(232, 239, 248));
         chip.setLayout(new BorderLayout());
-        chip.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        chip.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         JLabel label = new JLabel(safeText(text, "-"));
-        label.setFont(new Font("Monospaced", Font.BOLD, 14));
+        label.setFont(new Font("Monospaced", Font.BOLD, 13));
         label.setForeground(new Color(34, 47, 74));
         chip.add(label, BorderLayout.WEST);
         return chip;
@@ -6657,9 +7415,9 @@ public class AdminDashboardFrame extends JFrame {
 
         RoundedPanel badge = new RoundedPanel(12, bg);
         badge.setLayout(new BorderLayout());
-        badge.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
+        badge.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         JLabel label = new JLabel(text);
-        label.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        label.setFont(new Font("Segoe UI", Font.BOLD, 12));
         label.setForeground(fg);
         badge.add(label, BorderLayout.CENTER);
         return badge;
@@ -6679,17 +7437,17 @@ public class AdminDashboardFrame extends JFrame {
     private JButton softActionButton(String text, Color bg, Color fg) {
         JButton button = new JButton(text);
         button.setFocusPainted(false);
-        button.setBorder(BorderFactory.createEmptyBorder(7, 12, 7, 12));
+        button.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         button.setBackground(bg);
         button.setForeground(fg);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
         button.setCursor(new Cursor(Cursor.HAND_CURSOR));
         return button;
     }
 
     private RoundedPanel tableRowCard(int height) {
         RoundedPanel row = new RoundedPanel(14, new Color(247, 250, 255));
-        row.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        row.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setMinimumSize(new Dimension(10, height));
         row.setPreferredSize(new Dimension(1000, height));
@@ -6698,8 +7456,8 @@ public class AdminDashboardFrame extends JFrame {
     }
 
     private void applyFixedTableCardSize(RoundedPanel tableCard, boolean hasHeaderRow) {
-        int headerBlock = hasHeaderRow ? 56 : 0;
-        int totalHeight = TABLE_SCROLL_HEIGHT + headerBlock + 36;
+        int headerBlock = hasHeaderRow ? 50 : 0;
+        int totalHeight = TABLE_SCROLL_HEIGHT + headerBlock + 30;
         tableCard.setMinimumSize(new Dimension(100, totalHeight));
         tableCard.setPreferredSize(new Dimension(1000, totalHeight));
         tableCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, totalHeight));
@@ -7043,7 +7801,7 @@ public class AdminDashboardFrame extends JFrame {
         }
 
         if (VIEW_LOG.equals(view)) {
-            setLogFilter(logFilter);
+            refreshLogRows();
         }
         if (VIEW_APPOINTMENTS.equals(view)) {
             refreshAppointmentCalendarHeader();
@@ -7146,6 +7904,68 @@ public class AdminDashboardFrame extends JFrame {
             this.username = username;
             this.status = status;
             this.createdText = createdText;
+        }
+    }
+
+    private static class CancellationHistoryRecord {
+        final int historyId;
+        final int appointmentId;
+        final int patientId;
+        final String patientName;
+        final LocalDate appointmentDate;
+        final LocalTime appointmentTime;
+        final String appointmentReason;
+        final String allergies;
+        final String notes;
+        final String deletionReason;
+        final LocalDateTime deletedAt;
+
+        CancellationHistoryRecord(
+            int historyId,
+            int appointmentId,
+            int patientId,
+            String patientName,
+            LocalDate appointmentDate,
+            LocalTime appointmentTime,
+            String appointmentReason,
+            String allergies,
+            String notes,
+            String deletionReason,
+            LocalDateTime deletedAt
+        ) {
+            this.historyId = historyId;
+            this.appointmentId = appointmentId;
+            this.patientId = patientId;
+            this.patientName = patientName;
+            this.appointmentDate = appointmentDate;
+            this.appointmentTime = appointmentTime;
+            this.appointmentReason = appointmentReason;
+            this.allergies = allergies;
+            this.notes = notes;
+            this.deletionReason = deletionReason;
+            this.deletedAt = deletedAt;
+        }
+    }
+
+    private static class RescheduleResult {
+        final boolean success;
+        final LocalDate date;
+        final LocalTime time;
+        final String message;
+
+        private RescheduleResult(boolean success, LocalDate date, LocalTime time, String message) {
+            this.success = success;
+            this.date = date;
+            this.time = time;
+            this.message = message;
+        }
+
+        static RescheduleResult success(LocalDate date, LocalTime time) {
+            return new RescheduleResult(true, date, time, null);
+        }
+
+        static RescheduleResult failure(String message) {
+            return new RescheduleResult(false, null, null, message);
         }
     }
 
